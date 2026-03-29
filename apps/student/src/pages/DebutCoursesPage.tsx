@@ -18,16 +18,16 @@ export function DebutCoursesPage() {
   const levelId = params.levelId;
   if (!levelId) return <div className="text-sm text-slate-600">Missing levelId</div>;
 
-  const levelsQuery = useQuery({ queryKey: ["studentDebuts", "levels"], queryFn: studentDebutsApi.listLevels });
-  const coursesQuery = useQuery({
-    queryKey: ["studentDebuts", "courses", levelId],
-    queryFn: () => studentDebutsApi.listCourses(levelId),
+  const hierarchyQuery = useQuery({
+    queryKey: ["studentDebuts", "hierarchy"],
+    queryFn: studentDebutsApi.listHierarchy,
   });
 
-  const levelName = levelsQuery.data?.find((l) => l.id === levelId)?.name ?? "Daraja";
-  const loading = levelsQuery.isLoading || coursesQuery.isLoading;
-  const error = coursesQuery.error ?? levelsQuery.error;
-  const courses = coursesQuery.data ?? [];
+  const level = hierarchyQuery.data?.find((l) => l.id === levelId);
+  const levelName = level?.name ?? "Daraja";
+  const loading = hierarchyQuery.isLoading;
+  const error = hierarchyQuery.error;
+  const courses = level?.courses ?? [];
 
   return (
     <div className="space-y-3">

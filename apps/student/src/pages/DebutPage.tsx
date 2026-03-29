@@ -7,8 +7,8 @@ import { studentDebutsApi } from "../api/studentDebutsApi";
 export function DebutPage() {
   const navigate = useNavigate();
   const levelsQuery = useQuery({
-    queryKey: ["studentDebuts", "levels"],
-    queryFn: studentDebutsApi.listLevels,
+    queryKey: ["studentDebuts", "hierarchy"],
+    queryFn: studentDebutsApi.listHierarchy,
   });
 
   const loading = levelsQuery.isLoading;

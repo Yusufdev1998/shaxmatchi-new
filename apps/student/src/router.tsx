@@ -7,8 +7,6 @@ import { DebutCoursesPage } from "./pages/DebutCoursesPage";
 import { DebutModulesPage } from "./pages/DebutModulesPage";
 import { DebutTasksPage } from "./pages/DebutTasksPage";
 import { DebutPuzzlesPage } from "./pages/DebutPuzzlesPage";
-import { CoursePage } from "./pages/CoursePage";
-import { TaskPage } from "./pages/TaskPage";
 import { PuzzlePage } from "./pages/PuzzlePage";
 import { LessonsPage } from "./pages/LessonsPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -32,8 +30,6 @@ export const router = createBrowserRouter([
       { path: "debut/levels/:levelId/courses/:courseId/modules", element: <DebutModulesPage /> },
       { path: "debut/levels/:levelId/courses/:courseId/modules/:moduleId/tasks", element: <DebutTasksPage /> },
       { path: "debut/levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles", element: <DebutPuzzlesPage /> },
-      { path: "course/:id", element: <CoursePage /> },
-      { path: "task/:id", element: <TaskPage /> },
       { path: "puzzle/:id", element: <PuzzlePage /> },
       { path: "lessons", element: <LessonsPage /> },
       { path: "profile", element: <ProfilePage /> }

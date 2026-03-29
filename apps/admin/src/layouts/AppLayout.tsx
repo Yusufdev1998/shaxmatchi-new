@@ -1,13 +1,50 @@
+import * as React from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearAuthSession, getAuthToken, getAuthUser } from "../auth/auth";
-import { LogOut } from "lucide-react";
+import { Download, LogOut } from "lucide-react";
 import { Button } from "@shaxmatchi/ui";
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
 
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const token = getAuthToken();
   const user = getAuthUser();
+  const [deferredPrompt, setDeferredPrompt] = React.useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      // iOS Safari
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    setIsStandalone(standalone);
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredPrompt(event as BeforeInstallPromptEvent);
+    };
+    const onAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
 
   if (!token || !user) {
     return <Navigate to="/login" replace state={{ from: location }} />;
@@ -29,6 +66,21 @@ export function AppLayout() {
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden text-xs text-slate-600 sm:block">{user.login}</div>
+              {!isStandalone && deferredPrompt ? (
+                <Button
+                  variant="secondary"
+                  className="h-8 px-3"
+                  onClick={async () => {
+                    const prompt = deferredPrompt;
+                    if (!prompt) return;
+                    await prompt.prompt();
+                    await prompt.userChoice;
+                    setDeferredPrompt(null);
+                  }}
+                >
+                  <Download className="mr-1 h-3.5 w-3.5" /> Yuklab olish
+                </Button>
+              ) : null}
               <Button
                 variant="secondary"
                 className="h-8 px-3"

@@ -49,7 +49,43 @@ export type StudentPuzzleDetail = {
   mode: AssignmentMode;
 };
 
+export type StudentHierarchyPuzzle = {
+  id: string;
+  name: string;
+  createdAt: string;
+  assignment: StudentPuzzleAssignment;
+};
+
+export type StudentHierarchyTask = {
+  id: string;
+  name: string;
+  createdAt: string;
+  puzzles: StudentHierarchyPuzzle[];
+};
+
+export type StudentHierarchyModule = {
+  id: string;
+  name: string;
+  createdAt: string;
+  tasks: StudentHierarchyTask[];
+};
+
+export type StudentHierarchyCourse = {
+  id: string;
+  name: string;
+  createdAt: string;
+  modules: StudentHierarchyModule[];
+};
+
+export type StudentHierarchyLevel = {
+  id: string;
+  name: string;
+  createdAt: string;
+  courses: StudentHierarchyCourse[];
+};
+
 export const studentDebutsApi = {
+  listHierarchy: () => api<StudentHierarchyLevel[]>(`/student/debuts/hierarchy`),
   listLevels: () => api<Level[]>(`/student/debuts/levels`),
   listCourses: (levelId: string) => api<Course[]>(`/student/debuts/levels/${levelId}/courses`),
   listModules: (levelId: string, courseId: string) =>

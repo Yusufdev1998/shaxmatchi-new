@@ -19,21 +19,18 @@ export function DebutModulesPage() {
   const courseId = params.courseId;
   if (!levelId || !courseId) return <div className="text-sm text-slate-600">Missing params</div>;
 
-  const levelsQuery = useQuery({ queryKey: ["studentDebuts", "levels"], queryFn: studentDebutsApi.listLevels });
-  const coursesQuery = useQuery({
-    queryKey: ["studentDebuts", "courses", levelId],
-    queryFn: () => studentDebutsApi.listCourses(levelId),
-  });
-  const modulesQuery = useQuery({
-    queryKey: ["studentDebuts", "modules", levelId, courseId],
-    queryFn: () => studentDebutsApi.listModules(levelId, courseId),
+  const hierarchyQuery = useQuery({
+    queryKey: ["studentDebuts", "hierarchy"],
+    queryFn: studentDebutsApi.listHierarchy,
   });
 
-  const levelName = levelsQuery.data?.find((l) => l.id === levelId)?.name ?? "Daraja";
-  const courseName = coursesQuery.data?.find((c) => c.id === courseId)?.name ?? "Kurs";
-  const loading = levelsQuery.isLoading || coursesQuery.isLoading || modulesQuery.isLoading;
-  const error = modulesQuery.error ?? coursesQuery.error ?? levelsQuery.error;
-  const modules = modulesQuery.data ?? [];
+  const level = hierarchyQuery.data?.find((l) => l.id === levelId);
+  const course = level?.courses.find((c) => c.id === courseId);
+  const levelName = level?.name ?? "Daraja";
+  const courseName = course?.name ?? "Kurs";
+  const loading = hierarchyQuery.isLoading;
+  const error = hierarchyQuery.error;
+  const modules = course?.modules ?? [];
 
   return (
     <div className="space-y-3">

@@ -26,6 +26,133 @@ export class StudentDebutsService {
     return this.db;
   }
 
+  /** Full debut hierarchy containing only puzzles assigned to this student. */
+  async listHierarchy(studentId: string) {
+    const db = this.getDb();
+    const rows = await db
+      .select({
+        levelId: debutLevels.id,
+        levelName: debutLevels.name,
+        levelCreatedAt: debutLevels.createdAt,
+        courseId: courses.id,
+        courseName: courses.name,
+        courseCreatedAt: courses.createdAt,
+        moduleId: modules.id,
+        moduleName: modules.name,
+        moduleCreatedAt: modules.createdAt,
+        taskId: tasks.id,
+        taskName: tasks.name,
+        taskCreatedAt: tasks.createdAt,
+        puzzleId: puzzles.id,
+        puzzleName: puzzles.name,
+        puzzleCreatedAt: puzzles.createdAt,
+        assignmentId: puzzleAssignments.id,
+        assignmentMode: puzzleAssignments.mode,
+        assignmentAssignedAt: puzzleAssignments.assignedAt,
+        assignmentCompletedAt: puzzleAssignments.completedAt,
+      })
+      .from(puzzleAssignments)
+      .innerJoin(puzzles, eq(puzzles.id, puzzleAssignments.puzzleId))
+      .innerJoin(tasks, eq(tasks.id, puzzles.taskId))
+      .innerJoin(modules, eq(modules.id, tasks.moduleId))
+      .innerJoin(courses, eq(courses.id, modules.courseId))
+      .innerJoin(debutLevels, eq(debutLevels.id, courses.debutLevelId))
+      .where(eq(puzzleAssignments.studentId, studentId))
+      .orderBy(
+        asc(debutLevels.createdAt),
+        asc(courses.createdAt),
+        asc(modules.createdAt),
+        asc(tasks.createdAt),
+        asc(puzzles.createdAt),
+      );
+
+    type HierarchyPuzzle = {
+      id: string;
+      name: string;
+      createdAt: Date;
+      assignment: {
+        id: string;
+        mode: "new" | "test";
+        assignedAt: Date;
+        completedAt: Date | null;
+      };
+    };
+    type HierarchyTask = { id: string; name: string; createdAt: Date; puzzles: HierarchyPuzzle[] };
+    type HierarchyModule = { id: string; name: string; createdAt: Date; tasks: HierarchyTask[] };
+    type HierarchyCourse = { id: string; name: string; createdAt: Date; modules: HierarchyModule[] };
+    type HierarchyLevel = { id: string; name: string; createdAt: Date; courses: HierarchyCourse[] };
+
+    const levels: HierarchyLevel[] = [];
+    const levelMap = new Map<string, HierarchyLevel>();
+    const courseMap = new Map<string, HierarchyCourse>();
+    const moduleMap = new Map<string, HierarchyModule>();
+    const taskMap = new Map<string, HierarchyTask>();
+
+    for (const r of rows) {
+      let level = levelMap.get(r.levelId);
+      if (!level) {
+        level = {
+          id: r.levelId,
+          name: r.levelName,
+          createdAt: r.levelCreatedAt,
+          courses: [],
+        };
+        levelMap.set(r.levelId, level);
+        levels.push(level);
+      }
+
+      let course = courseMap.get(r.courseId);
+      if (!course) {
+        course = {
+          id: r.courseId,
+          name: r.courseName,
+          createdAt: r.courseCreatedAt,
+          modules: [],
+        };
+        courseMap.set(r.courseId, course);
+        level.courses.push(course);
+      }
+
+      let module = moduleMap.get(r.moduleId);
+      if (!module) {
+        module = {
+          id: r.moduleId,
+          name: r.moduleName,
+          createdAt: r.moduleCreatedAt,
+          tasks: [],
+        };
+        moduleMap.set(r.moduleId, module);
+        course.modules.push(module);
+      }
+
+      let task = taskMap.get(r.taskId);
+      if (!task) {
+        task = {
+          id: r.taskId,
+          name: r.taskName,
+          createdAt: r.taskCreatedAt,
+          puzzles: [],
+        };
+        taskMap.set(r.taskId, task);
+        module.tasks.push(task);
+      }
+
+      task.puzzles.push({
+        id: r.puzzleId,
+        name: r.puzzleName,
+        createdAt: r.puzzleCreatedAt,
+        assignment: {
+          id: r.assignmentId,
+          mode: r.assignmentMode,
+          assignedAt: r.assignmentAssignedAt,
+          completedAt: r.assignmentCompletedAt ?? null,
+        },
+      });
+    }
+
+    return levels;
+  }
+
   /** Levels that contain at least one puzzle assigned to this student. */
   async listLevels(studentId: string) {
     const db = this.getDb();

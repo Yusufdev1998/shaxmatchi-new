@@ -21,36 +21,22 @@ export function DebutPuzzlesPage() {
   const taskId = params.taskId;
   if (!levelId || !courseId || !moduleId || !taskId) return <div className="text-sm text-slate-600">Missing params</div>;
 
-  const levelsQuery = useQuery({ queryKey: ["studentDebuts", "levels"], queryFn: studentDebutsApi.listLevels });
-  const coursesQuery = useQuery({
-    queryKey: ["studentDebuts", "courses", levelId],
-    queryFn: () => studentDebutsApi.listCourses(levelId),
-  });
-  const modulesQuery = useQuery({
-    queryKey: ["studentDebuts", "modules", levelId, courseId],
-    queryFn: () => studentDebutsApi.listModules(levelId, courseId),
-  });
-  const tasksQuery = useQuery({
-    queryKey: ["studentDebuts", "tasks", levelId, courseId, moduleId],
-    queryFn: () => studentDebutsApi.listTasks(levelId, courseId, moduleId),
-  });
-  const puzzlesQuery = useQuery({
-    queryKey: ["studentDebuts", "puzzles", levelId, courseId, moduleId, taskId],
-    queryFn: () => studentDebutsApi.listPuzzles(levelId, courseId, moduleId, taskId),
+  const hierarchyQuery = useQuery({
+    queryKey: ["studentDebuts", "hierarchy"],
+    queryFn: studentDebutsApi.listHierarchy,
   });
 
-  const levelName = levelsQuery.data?.find((l) => l.id === levelId)?.name ?? "Daraja";
-  const courseName = coursesQuery.data?.find((c) => c.id === courseId)?.name ?? "Kurs";
-  const moduleName = modulesQuery.data?.find((m) => m.id === moduleId)?.name ?? "Modul";
-  const taskName = tasksQuery.data?.find((t) => t.id === taskId)?.name ?? "Vazifa";
-  const loading =
-    levelsQuery.isLoading ||
-    coursesQuery.isLoading ||
-    modulesQuery.isLoading ||
-    tasksQuery.isLoading ||
-    puzzlesQuery.isLoading;
-  const error = puzzlesQuery.error ?? tasksQuery.error ?? modulesQuery.error ?? coursesQuery.error ?? levelsQuery.error;
-  const puzzles = puzzlesQuery.data ?? [];
+  const level = hierarchyQuery.data?.find((l) => l.id === levelId);
+  const course = level?.courses.find((c) => c.id === courseId);
+  const module = course?.modules.find((m) => m.id === moduleId);
+  const task = module?.tasks.find((t) => t.id === taskId);
+  const levelName = level?.name ?? "Daraja";
+  const courseName = course?.name ?? "Kurs";
+  const moduleName = module?.name ?? "Modul";
+  const taskName = task?.name ?? "Vazifa";
+  const loading = hierarchyQuery.isLoading;
+  const error = hierarchyQuery.error;
+  const puzzles = task?.puzzles ?? [];
 
   return (
     <div className="space-y-3">

@@ -9,6 +9,11 @@ import { StudentDebutsService } from "./student-debuts.service";
 export class StudentDebutsController {
   constructor(private readonly studentDebuts: StudentDebutsService) {}
 
+  @Get("hierarchy")
+  listHierarchy(@Req() req: { user: JwtUserPayload }) {
+    return this.studentDebuts.listHierarchy(req.user.sub);
+  }
+
   @Get("levels")
   listLevels(@Req() req: { user: JwtUserPayload }) {
     return this.studentDebuts.listLevels(req.user.sub);
