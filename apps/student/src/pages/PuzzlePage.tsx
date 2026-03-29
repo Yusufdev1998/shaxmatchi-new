@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Chess, type Square } from "chess.js";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BaseChessboard,
   Breadcrumb,
@@ -12,7 +12,7 @@ import {
   Button,
   TruncatedText,
 } from "@shaxmatchi/ui";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { PieceDropHandlerArgs } from "react-chessboard";
 import { BookOpen, Repeat, Dumbbell, ChevronLeft, ChevronRight, CheckCircle, RotateCcw } from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
@@ -23,6 +23,9 @@ function assignmentModeLabel(mode: "new" | "test"): string {
 
 export function PuzzlePage() {
   const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const puzzleQuery = useQuery({
     queryKey: ["studentPuzzles", "puzzle", id],
@@ -36,8 +39,12 @@ export function PuzzlePage() {
   const [game, setGame] = React.useState(() => new Chess());
   const [mode, setMode] = React.useState<"study" | "repeat" | "practice" | null>(null);
   const autoplayRef = React.useRef<number | null>(null);
+  const limitRedirectTimerRef = React.useRef<number | null>(null);
+  const skipNextModeSelectionRef = React.useRef(false);
   const practiceBoardWrapRef = React.useRef<HTMLDivElement>(null);
   const [moveIdx, setMoveIdx] = React.useState(0);
+  const [isPracticeResetting, setIsPracticeResetting] = React.useState(false);
+  const [isLimitRedirecting, setIsLimitRedirecting] = React.useState(false);
 
   const fen = game.fen();
 
@@ -47,6 +54,21 @@ export function PuzzlePage() {
       autoplayRef.current = null;
     }
   }, []);
+
+  const triggerLimitRedirect = React.useCallback(() => {
+    if (limitRedirectTimerRef.current !== null) return;
+    stopAutoplay();
+    setIsLimitRedirecting(true);
+    void queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
+    const state = location.state as { returnTo?: string } | null;
+    const returnTo =
+      typeof state?.returnTo === "string" && state.returnTo.length > 0
+        ? state.returnTo
+        : "/debut";
+    limitRedirectTimerRef.current = window.setTimeout(() => {
+      navigate(returnTo, { replace: true });
+    }, 1300);
+  }, [location.state, navigate, queryClient, stopAutoplay]);
 
   React.useEffect(() => {
     if (!id) return;
@@ -60,8 +82,13 @@ export function PuzzlePage() {
     setGame(new Chess());
     setMoveIdx(0);
     stopAutoplay();
-    // Always ask the student to pick the allowed mode when opening a variant.
-    setMode(null);
+    if (skipNextModeSelectionRef.current && puzzle.mode === "test") {
+      skipNextModeSelectionRef.current = false;
+      setMode("practice");
+    } else {
+      // Always ask the student to pick the allowed mode when opening a variant.
+      setMode(null);
+    }
   }, [id, puzzle, stopAutoplay]);
 
   const startRepeat = React.useCallback(() => {
@@ -102,9 +129,42 @@ export function PuzzlePage() {
     el.classList.add("animate-board-shake");
   }, []);
 
+  const handlePracticeFailure = React.useCallback(() => {
+    triggerWrongPracticeFeedback();
+    stopAutoplay();
+    setGame(new Chess());
+    setMoveIdx(0);
+    // In mashq mode, each failed attempt consumes one try.
+    setIsPracticeResetting(true);
+    skipNextModeSelectionRef.current = true;
+    if (!id) {
+      setIsPracticeResetting(false);
+      return;
+    }
+    void studentDebutsApi
+      .consumePracticeAttempt(id)
+      .catch(() => undefined)
+      .then(async () => {
+        await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
+        return puzzleQuery.refetch();
+      })
+      .finally(() => {
+        setIsPracticeResetting(false);
+      });
+  }, [id, puzzleQuery, queryClient, stopAutoplay, triggerWrongPracticeFeedback]);
+
   const onPracticePieceDrop = React.useCallback(
     ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
       if (!targetSquare) return false;
+      if (isPracticeResetting) return false;
+      if (
+        puzzle?.mode === "test" &&
+        typeof puzzle.practiceLimit === "number" &&
+        typeof puzzle.practiceAttemptsUsed === "number" &&
+        puzzle.practiceAttemptsUsed >= puzzle.practiceLimit
+      ) {
+        return false;
+      }
       const from = sourceSquare as Square;
       const to = targetSquare as Square;
       if (moveIdx >= puzzleMoves.length) return false;
@@ -112,13 +172,13 @@ export function PuzzlePage() {
       const next = new Chess(fen);
       const move = next.move({ from, to, promotion: "q" });
       if (!move) {
-        triggerWrongPracticeFeedback();
+        handlePracticeFailure();
         return false;
       }
 
       const expectedSan = puzzleMoves[moveIdx]?.san;
       if (!expectedSan || move.san !== expectedSan) {
-        triggerWrongPracticeFeedback();
+        handlePracticeFailure();
         return false;
       }
 
@@ -126,7 +186,7 @@ export function PuzzlePage() {
       setMoveIdx((i) => i + 1);
       return true;
     },
-    [fen, moveIdx, puzzleMoves, triggerWrongPracticeFeedback],
+    [fen, handlePracticeFailure, isPracticeResetting, moveIdx, puzzle, puzzleMoves],
   );
 
   const onRepeatPieceDrop = React.useCallback(
@@ -178,6 +238,38 @@ export function PuzzlePage() {
   }, [fen, mode, moveIdx, puzzleMoves, stopAutoplay]);
 
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
+  React.useEffect(
+    () => () => {
+      if (limitRedirectTimerRef.current !== null) {
+        window.clearTimeout(limitRedirectTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const practiceAttemptsUsed =
+    typeof puzzle?.practiceAttemptsUsed === "number" ? puzzle.practiceAttemptsUsed : null;
+  const practiceLimit =
+    typeof puzzle?.practiceLimit === "number" ? puzzle.practiceLimit : null;
+  const isPracticeLimitReached =
+    puzzle?.mode === "test" &&
+    practiceLimit !== null &&
+    practiceAttemptsUsed !== null &&
+    practiceAttemptsUsed >= practiceLimit;
+
+  React.useEffect(() => {
+    const rawError: unknown = puzzleQuery.error;
+    const errMsg = rawError instanceof Error ? rawError.message.toLowerCase() : "";
+    if (errMsg.includes("limiti tugagan")) {
+      triggerLimitRedirect();
+    }
+  }, [puzzleQuery.error, triggerLimitRedirect]);
+
+  React.useEffect(() => {
+    if (mode === "practice" && isPracticeLimitReached) {
+      triggerLimitRedirect();
+    }
+  }, [isPracticeLimitReached, mode, triggerLimitRedirect]);
 
   if (!id) {
     return <div className="text-sm text-slate-600">Variant id topilmadi</div>;
@@ -205,13 +297,32 @@ export function PuzzlePage() {
   const isTestAssignment = puzzle.mode === "test";
   const isRepeatComplete = mode === "repeat" && moveIdx >= puzzleMoves.length;
   const isRepeatStudentTurn = mode === "repeat" && moveIdx < puzzleMoves.length && moveIdx % 2 === 0;
-  const practiceAttemptsUsed =
-    typeof puzzle.practiceAttemptsUsed === "number" ? puzzle.practiceAttemptsUsed : null;
-  const practiceLimit =
-    typeof puzzle.practiceLimit === "number" ? puzzle.practiceLimit : null;
+  const isPracticeBoardLocked = isLocked || isPracticeResetting;
 
   return (
     <div className="space-y-3">
+      {isLimitRedirecting ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-white/20 bg-slate-900/95 p-5 text-center text-white shadow-2xl">
+            <div className="text-base font-semibold">Sizning urinishlaringiz tugadi!</div>
+            <div className="mt-2 text-sm text-slate-200">Variantlar sahifasiga qaytilmoqda...</div>
+          </div>
+        </div>
+      ) : null}
+
+      {mode === "practice" && isPracticeResetting ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-sm rounded-xl border border-white/25 bg-slate-900/90 p-5 text-center text-white shadow-2xl">
+            <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-2 border-white/35 border-t-white" />
+            <div className="text-base font-semibold">Xato urinish</div>
+            <div className="mt-1 text-sm text-slate-200">
+              Mashq boshidan boshlanadi.
+            </div>
+            <div className="mt-3 text-xs text-slate-300">Yangilanmoqda...</div>
+          </div>
+        </div>
+      ) : null}
+
       {mode === null ? (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" />
@@ -220,7 +331,10 @@ export function PuzzlePage() {
             <div className="mt-1 text-sm text-slate-600">Nima qilmoqchisiz?</div>
             <div className="mt-4 grid gap-2">
               {isTestAssignment ? (
-                <Button onClick={() => setMode("practice")}>
+                <Button
+                  onClick={() => setMode("practice")}
+                  disabled={isPracticeLimitReached}
+                >
                   <Dumbbell className="mr-2 h-4 w-4" /> Mashq
                 </Button>
               ) : (
@@ -291,7 +405,7 @@ export function PuzzlePage() {
           ref={practiceBoardWrapRef}
           className={`mb-2 origin-center will-change-transform ${
             mode === "practice"
-              ? isLocked
+              ? isPracticeBoardLocked || isPracticeLimitReached
                 ? "pointer-events-none select-none"
                 : ""
               : mode === "repeat"
@@ -332,6 +446,9 @@ export function PuzzlePage() {
               </Button>
             )}
           </div>
+        ) : null}
+        {mode === "practice" && isPracticeLimitReached ? (
+          <div className="mt-2 text-xs text-red-700">Mashq urinishlar limiti tugagan.</div>
         ) : null}
       </div>
 

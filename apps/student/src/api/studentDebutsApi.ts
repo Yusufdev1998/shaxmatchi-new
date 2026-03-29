@@ -53,6 +53,12 @@ export type StudentPuzzleDetail = {
   practiceAttemptsUsed: number;
 };
 
+export type ConsumePracticeAttemptResult = {
+  ok: true;
+  practiceLimit: number | null;
+  practiceAttemptsUsed: number;
+};
+
 export type StudentHierarchyPuzzle = {
   id: string;
   name: string;
@@ -176,5 +182,9 @@ export const studentDebutsApi = {
       `/student/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles`,
     ),
   getPuzzle: (puzzleId: string) => api<StudentPuzzleDetail>(`/student/puzzles/${puzzleId}`),
+  consumePracticeAttempt: (puzzleId: string) =>
+    api<ConsumePracticeAttemptResult>(`/student/puzzles/${puzzleId}/consume-attempt`, {
+      method: "POST",
+    }),
 };
 

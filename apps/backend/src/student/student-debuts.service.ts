@@ -377,17 +377,13 @@ export class StudentDebutsService {
     const puzzle = rows[0];
     if (!puzzle) throw new NotFoundException("Variant not found");
 
-    let practiceAttemptsUsed = assignment.practiceAttemptsUsed ?? 0;
     if (assignment.mode === "test") {
-      if (assignment.practiceLimit !== null && practiceAttemptsUsed >= assignment.practiceLimit) {
+      if (
+        assignment.practiceLimit !== null &&
+        (assignment.practiceAttemptsUsed ?? 0) >= assignment.practiceLimit
+      ) {
         throw new ForbiddenException("Mashq urinishlar limiti tugagan");
       }
-      const updated = await db
-        .update(puzzleAssignments)
-        .set({ practiceAttemptsUsed: practiceAttemptsUsed + 1 })
-        .where(eq(puzzleAssignments.id, assignment.assignmentId))
-        .returning({ practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed });
-      practiceAttemptsUsed = updated[0]?.practiceAttemptsUsed ?? practiceAttemptsUsed + 1;
     }
 
     return {
@@ -398,7 +394,49 @@ export class StudentDebutsService {
       createdAt: puzzle.createdAt,
       mode: assignment.mode,
       practiceLimit: assignment.practiceLimit ?? null,
-      practiceAttemptsUsed,
+      practiceAttemptsUsed: assignment.practiceAttemptsUsed ?? 0,
+    };
+  }
+
+  async consumePracticeAttemptForStudent(input: { puzzleId: string; studentId: string }) {
+    const db = this.getDb();
+    const rows = await db
+      .select({
+        assignmentId: puzzleAssignments.id,
+        mode: puzzleAssignments.mode,
+        practiceLimit: puzzleAssignments.practiceLimit,
+        practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+      })
+      .from(puzzleAssignments)
+      .where(
+        and(
+          eq(puzzleAssignments.puzzleId, input.puzzleId),
+          eq(puzzleAssignments.studentId, input.studentId),
+        ),
+      )
+      .limit(1);
+    const assignment = rows[0];
+    if (!assignment) throw new ForbiddenException("Variant is locked");
+    if (assignment.mode !== "test") throw new ForbiddenException("Mashq rejimi emas");
+
+    const used = assignment.practiceAttemptsUsed ?? 0;
+    if (assignment.practiceLimit !== null && used >= assignment.practiceLimit) {
+      throw new ForbiddenException("Mashq urinishlar limiti tugagan");
+    }
+
+    const updated = await db
+      .update(puzzleAssignments)
+      .set({ practiceAttemptsUsed: used + 1 })
+      .where(eq(puzzleAssignments.id, assignment.assignmentId))
+      .returning({
+        practiceLimit: puzzleAssignments.practiceLimit,
+        practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+      });
+    const next = updated[0];
+    return {
+      ok: true as const,
+      practiceLimit: next?.practiceLimit ?? assignment.practiceLimit ?? null,
+      practiceAttemptsUsed: next?.practiceAttemptsUsed ?? used + 1,
     };
   }
 }

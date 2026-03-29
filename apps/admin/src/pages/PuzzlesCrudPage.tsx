@@ -137,6 +137,7 @@ export function PuzzlesCrudPage() {
   const [assignPracticeLimit, setAssignPracticeLimit] =
     React.useState<string>("");
   const [assignError, setAssignError] = React.useState<string | null>(null);
+  const [assignSuccess, setAssignSuccess] = React.useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const levelId = params.levelId;
@@ -574,6 +575,11 @@ export function PuzzlesCrudPage() {
       />
 
       {error ? <div className={debutsUi.error}>{error}</div> : null}
+      {assignSuccess ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {assignSuccess}
+        </div>
+      ) : null}
 
       <div className={debutsUi.card}>
         <div className={debutsUi.formCardPad}>
@@ -758,6 +764,7 @@ export function PuzzlesCrudPage() {
                     className={debutsUi.indigoLink}
                     title="Tayinlash"
                     onClick={() => {
+                      setAssignSuccess(null);
                       setAssignError(null);
                       setAssignMode("new");
                       setAssignPracticeLimit("");
@@ -988,6 +995,7 @@ export function PuzzlesCrudPage() {
                   const puzzleId = assignOpenForPuzzleId;
                   if (!puzzleId) return;
                   try {
+                    setAssignSuccess(null);
                     setAssignError(null);
                     let practiceLimit: number | undefined;
                     if (assignMode === "test") {
@@ -1007,6 +1015,8 @@ export function PuzzlesCrudPage() {
                       mode: assignMode,
                       practiceLimit,
                     });
+                    setAssignSuccess("Variant muvaffaqiyatli tayinlandi.");
+                    setAssignOpenForPuzzleId(null);
                   } catch (e) {
                     setAssignError(e instanceof Error ? e.message : "Variantni tayinlab bo'lmadi");
                   }
