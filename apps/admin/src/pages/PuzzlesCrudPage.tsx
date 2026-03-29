@@ -110,6 +110,23 @@ function parsePgnToMoves(pgnText: string): {
   };
 }
 
+function movesToPgnSafe(moves: PuzzleMove[]): string {
+  if (moves.length === 0) return "";
+  try {
+    const g = new Chess();
+    for (const m of moves) {
+      const ok = g.move(m.san);
+      if (!ok) {
+        // Fallback to plain SAN sequence if a move cannot be applied.
+        return moves.map((x) => x.san).join(" ");
+      }
+    }
+    return g.pgn();
+  } catch {
+    return moves.map((x) => x.san).join(" ");
+  }
+}
+
 export function PuzzlesCrudPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -314,9 +331,11 @@ export function PuzzlesCrudPage() {
     setError(null);
     setEditingPuzzleId(p.id);
     setNewName(p.name);
-    setNewPgn("");
-    setNewMoves(Array.isArray(p.moves) ? p.moves : []);
-    setNewPgnNormalized("");
+    const existingMoves = Array.isArray(p.moves) ? p.moves : [];
+    const existingPgn = movesToPgnSafe(existingMoves);
+    setNewPgn(existingPgn);
+    setNewMoves(existingMoves);
+    setNewPgnNormalized(existingPgn);
     setPgnError(null);
     setNewMoveDialogIdx(null);
     setNewMoveDialogValue("");
@@ -614,7 +633,7 @@ export function PuzzlesCrudPage() {
                 onClick={resetForm}
                 title="Tahrirlashni bekor qilish"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4 text-red-600" />
               </Button>
             ) : null}
           </div>
@@ -648,6 +667,7 @@ export function PuzzlesCrudPage() {
                       size="sm"
                       variant="secondary"
                       disabled={busy}
+                      title={m.explanation.trim().length > 0 ? "Tushuntirishni tahrirlash" : "Tushuntirish qo'shish"}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -655,7 +675,7 @@ export function PuzzlesCrudPage() {
                         setNewMoveDialogValue(m.explanation);
                       }}
                     >
-                      {m.explanation.trim().length > 0 ? "Tahrirlash" : "Qo'shish"} tushuntirish
+                      {m.explanation.trim().length > 0 ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                     </Button>
                   </div>
                 ))}
@@ -689,7 +709,7 @@ export function PuzzlesCrudPage() {
                 onClick={() => setNewMoveDialogIdx(null)}
                 title="Yopish"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4 text-red-600" />
               </Button>
             </div>
             <div className="mt-3 rounded-xl border border-slate-200 bg-white">
@@ -723,7 +743,7 @@ export function PuzzlesCrudPage() {
                 onClick={() => setNewMoveDialogIdx(null)}
                 title="Bekor qilish"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4 text-red-600" />
               </Button>
             </div>
           </div>
@@ -1045,7 +1065,7 @@ export function PuzzlesCrudPage() {
                 onClick={() => setAssignOpenForPuzzleId(null)}
                 title="Yopish"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4 text-red-600" />
               </Button>
             </div>
           </div>
