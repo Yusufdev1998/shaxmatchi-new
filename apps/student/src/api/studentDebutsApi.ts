@@ -26,6 +26,8 @@ export type AssignmentMode = "new" | "test";
 export type StudentPuzzleAssignment = {
   id: string;
   mode: AssignmentMode;
+  practiceLimit: number | null;
+  practiceAttemptsUsed: number;
   assignedAt: string;
   completedAt: string | null;
 };
@@ -47,6 +49,8 @@ export type StudentPuzzleDetail = {
   moves: PuzzleMove[];
   createdAt: string;
   mode: AssignmentMode;
+  practiceLimit: number | null;
+  practiceAttemptsUsed: number;
 };
 
 export type StudentHierarchyPuzzle = {
@@ -84,8 +88,83 @@ export type StudentHierarchyLevel = {
   courses: StudentHierarchyCourse[];
 };
 
+async function listHierarchyFallback(): Promise<StudentHierarchyLevel[]> {
+  const levels = await studentDebutsApi.listLevels();
+  const levelsWithCourses = await Promise.all(
+    levels.map(async (level) => {
+      const courses = await studentDebutsApi.listCourses(level.id);
+      const coursesWithModules = await Promise.all(
+        courses.map(async (course) => {
+          const modules = await studentDebutsApi.listModules(level.id, course.id);
+          const modulesWithTasks = await Promise.all(
+            modules.map(async (module) => {
+              const tasks = await studentDebutsApi.listTasks(level.id, course.id, module.id);
+              const tasksWithPuzzles = await Promise.all(
+                tasks.map(async (task) => {
+                  const puzzles = await studentDebutsApi.listPuzzles(level.id, course.id, module.id, task.id);
+                  return {
+                    id: task.id,
+                    name: task.name,
+                    createdAt: task.createdAt,
+                    puzzles: puzzles
+                      .filter((p) => p.assignment !== null)
+                      .map((p) => ({
+                        id: p.id,
+                        name: p.name,
+                        createdAt: p.createdAt,
+                        assignment: p.assignment!,
+                      })),
+                  };
+                }),
+              );
+
+              return {
+                id: module.id,
+                name: module.name,
+                createdAt: module.createdAt,
+                tasks: tasksWithPuzzles.filter((task) => task.puzzles.length > 0),
+              };
+            }),
+          );
+
+          return {
+            id: course.id,
+            name: course.name,
+            createdAt: course.createdAt,
+            modules: modulesWithTasks.filter((module) => module.tasks.length > 0),
+          };
+        }),
+      );
+
+      return {
+        id: level.id,
+        name: level.name,
+        createdAt: level.createdAt,
+        courses: levelsWithCoursesFilter(coursesWithModules),
+      };
+    }),
+  );
+
+  return levelsWithCourses.filter((level) => level.courses.length > 0);
+}
+
+function levelsWithCoursesFilter(courses: StudentHierarchyCourse[]): StudentHierarchyCourse[] {
+  return courses.filter((course) => course.modules.length > 0);
+}
+
 export const studentDebutsApi = {
-  listHierarchy: () => api<StudentHierarchyLevel[]>(`/student/debuts/hierarchy`),
+  listHierarchy: async () => {
+    try {
+      return await api<StudentHierarchyLevel[]>(`/student/debuts/hierarchy`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "";
+      const shouldFallback =
+        message.includes("Cannot GET /student/debuts/hierarchy") ||
+        message.includes("HTTP 404");
+      if (!shouldFallback) throw e;
+      return listHierarchyFallback();
+    }
+  },
   listLevels: () => api<Level[]>(`/student/debuts/levels`),
   listCourses: (levelId: string) => api<Course[]>(`/student/debuts/levels/${levelId}/courses`),
   listModules: (levelId: string, courseId: string) =>

@@ -201,38 +201,48 @@ export function TasksPage() {
         ) : (
           <div className={debutsUi.listRows}>
             {items.map((t) => (
-              <div key={t.id} className={[debutsUi.row, debutsUi.rowHover].join(" ")}>
+              <div
+                key={t.id}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                className={[debutsUi.row, debutsUi.rowHover, busy ? "" : "cursor-pointer"].join(" ")}
+                onClick={() => {
+                  if (busy) return;
+                  navigate(`/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks/${t.id}/puzzles`);
+                }}
+                onKeyDown={(e) => {
+                  if (busy) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks/${t.id}/puzzles`);
+                  }
+                }}
+                aria-disabled={busy ? "true" : "false"}
+              >
                 <div className="min-w-0 flex-1">
                   <TruncatedText text={t.name} className="text-sm font-medium text-slate-900" />
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      navigate(
-                        `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks/${t.id}/puzzles`,
-                      )
-                    }
-                  >
-                    Pazllar
-                  </Button>
                   <button
                     type="button"
                     className={debutsUi.linkBtn}
                     disabled={busy}
                     title="Tahrirlash"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setEditingId(t.id);
                       setEditingValue(t.name);
                     }}
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-4 w-4" />
                   </button>
-                  <button type="button" className={debutsUi.dangerBtn} disabled={busy} title="O'chirish" onClick={() => void remove(t.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <button type="button" className={debutsUi.dangerBtn} disabled={busy} title="O'chirish" onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void remove(t.id);
+                  }}>
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>

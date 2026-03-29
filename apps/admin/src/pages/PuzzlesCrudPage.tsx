@@ -46,6 +46,10 @@ function formatMoveNumber(idx: number) {
   return isWhite ? `${moveNo}.` : `${moveNo}...`;
 }
 
+function assignmentModeLabel(mode: PuzzleAssignmentMode): string {
+  return mode === "test" ? "mashq" : "o'rganish";
+}
+
 function pgnToSanMovesSafe(pgn: string): string[] {
   try {
     const chess = new Chess();
@@ -113,6 +117,7 @@ export function PuzzlesCrudPage() {
   const [newPgn, setNewPgn] = React.useState("");
   const [newMoves, setNewMoves] = React.useState<PuzzleMove[]>([]);
   const [newPgnNormalized, setNewPgnNormalized] = React.useState<string>("");
+  const [pgnError, setPgnError] = React.useState<string | null>(null);
   const [newMoveDialogIdx, setNewMoveDialogIdx] = React.useState<number | null>(
     null,
   );
@@ -129,6 +134,8 @@ export function PuzzlesCrudPage() {
   const [assignStudentId, setAssignStudentId] = React.useState<string>("");
   const [assignMode, setAssignMode] =
     React.useState<PuzzleAssignmentMode>("new");
+  const [assignPracticeLimit, setAssignPracticeLimit] =
+    React.useState<string>("");
   const [assignError, setAssignError] = React.useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -225,6 +232,8 @@ export function PuzzlesCrudPage() {
         studentId: string;
         studentLogin?: string;
         mode: PuzzleAssignmentMode;
+        practiceLimit: number | null;
+        practiceAttemptsUsed: number;
         assignedAt: string;
         completedAt: string | null;
       }
@@ -252,7 +261,7 @@ export function PuzzlesCrudPage() {
       coursesQuery.error ??
       levelsQuery.error;
     if (err) {
-      setError(err instanceof Error ? err.message : "Pazllarni yuklab bo'lmadi");
+      setError(err instanceof Error ? err.message : "Variantlarni yuklab bo'lmadi");
     }
   }, [
     puzzlesQuery.error,
@@ -281,6 +290,7 @@ export function PuzzlesCrudPage() {
       setAssignStudentId(firstId);
       const existing = assignmentsByStudentId.get(firstId);
       setAssignMode(existing?.mode ?? "new");
+      setAssignPracticeLimit(existing?.practiceLimit ? String(existing.practiceLimit) : "");
     }
   }, [assignOpenForPuzzleId, assignStudentId, students, assignmentsByStudentId]);
 
@@ -294,6 +304,7 @@ export function PuzzlesCrudPage() {
     setNewPgn("");
     setNewMoves([]);
     setNewPgnNormalized("");
+    setPgnError(null);
     setNewMoveDialogIdx(null);
     setNewMoveDialogValue("");
   }
@@ -305,6 +316,7 @@ export function PuzzlesCrudPage() {
     setNewPgn("");
     setNewMoves(Array.isArray(p.moves) ? p.moves : []);
     setNewPgnNormalized("");
+    setPgnError(null);
     setNewMoveDialogIdx(null);
     setNewMoveDialogValue("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -318,6 +330,35 @@ export function PuzzlesCrudPage() {
       return m;
     });
   }
+
+  React.useEffect(() => {
+    const raw = newPgn.trim();
+    if (!raw) {
+      setPgnError(null);
+      if (!isEditing) {
+        setNewMoves([]);
+        setNewPgnNormalized("");
+      }
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      try {
+        const parsed = parsePgnToMoves(raw);
+        setNewMoves((prev) => mergeExplanations(prev, parsed.moves));
+        setNewPgnNormalized(parsed.normalizedPgn);
+        setPgnError(null);
+      } catch (e) {
+        setPgnError(
+          e instanceof Error
+            ? e.message
+            : "PGNni tahlil qilib bo'lmadi. To'g'ri PGN (SAN yurishlar) joylashtiring.",
+        );
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [newPgn, isEditing]);
 
   const createPuzzleMutation = useMutation({
     mutationFn: (input: { name: string; moves: PuzzleMove[] }) =>
@@ -395,6 +436,7 @@ export function PuzzlesCrudPage() {
       puzzleId: string;
       studentId: string;
       mode: PuzzleAssignmentMode;
+      practiceLimit?: number;
     }) =>
       adminDebutsApi.assignPuzzleToStudent(
         levelIdSafe,
@@ -402,7 +444,7 @@ export function PuzzlesCrudPage() {
         moduleIdSafe,
         taskIdSafe,
         input.puzzleId,
-        { studentId: input.studentId, mode: input.mode },
+        { studentId: input.studentId, mode: input.mode, practiceLimit: input.practiceLimit },
       ),
     onSuccess: async (_, vars) => {
       await queryClient.invalidateQueries({
@@ -462,6 +504,7 @@ export function PuzzlesCrudPage() {
       await unassignPuzzleMutation.mutateAsync({ puzzleId, assignmentId });
       if (selectedAssignment?.id === assignmentId) {
         setAssignMode("new");
+        setAssignPracticeLimit("");
       }
     } catch (e) {
       setAssignError(e instanceof Error ? e.message : "Tayinlovni bekor qilib bo'lmadi");
@@ -472,7 +515,7 @@ export function PuzzlesCrudPage() {
     const name = newName.trim();
     if (!name) return;
     if (newMoves.length === 0) {
-      setError("Avval PGN tahlil qiling (hali yurishlar yo'q).");
+      setError("PGN kiriting (hali yurishlar yo'q).");
       return;
     }
     setError(null);
@@ -488,17 +531,17 @@ export function PuzzlesCrudPage() {
       }
       resetForm();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Pazlni saqlab bo'lmadi");
+      setError(e instanceof Error ? e.message : "Variantni saqlab bo'lmadi");
     }
   }
 
   async function remove(id: string) {
-    if (!confirm("Pazlni o'chirasizmi?")) return;
+    if (!confirm("Variantni o'chirasizmi?")) return;
     setError(null);
     try {
       await deletePuzzleMutation.mutateAsync(id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Pazlni o'chirib bo'lmadi");
+      setError(e instanceof Error ? e.message : "Variantni o'chirib bo'lmadi");
     }
   }
 
@@ -518,12 +561,12 @@ export function PuzzlesCrudPage() {
             label: moduleName,
             to: `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks`,
           },
-          { label: "Pazllar" },
+          { label: "Variantlar" },
         ]}
       />
 
       <DebutsPageHeader
-        title="Pazllar"
+        title="Variantlar"
         contextLabel="Vazifa"
         contextValue={taskName}
         loading={loading}
@@ -538,7 +581,7 @@ export function PuzzlesCrudPage() {
             className={debutsUi.input}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Pazl nomi"
+            placeholder="Variant nomi"
           />
           <textarea
             className={debutsUi.textarea}
@@ -547,27 +590,14 @@ export function PuzzlesCrudPage() {
             onChange={(e) => setNewPgn(e.target.value)}
             placeholder="PGNni bu yerga joylashtiring (SAN yurishlar)"
           />
+          {pgnError ? (
+            <div className="text-xs text-red-600">{pgnError}</div>
+          ) : newPgn.trim().length > 0 ? (
+            <div className="text-xs text-slate-500">PGN avtomatik tahlil qilinadi.</div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => {
-                setError(null);
-                try {
-                  const parsed = parsePgnToMoves(newPgn);
-                  setNewMoves((prev) => mergeExplanations(prev, parsed.moves));
-                  setNewPgnNormalized(parsed.normalizedPgn);
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "Failed to parse PGN");
-                }
-              }}
-            >
-              PGN tahlili
-            </Button>
             <Button type="button" size="sm" disabled={busy} onClick={savePuzzle}>
-              {isEditing ? "O'zgarishlarni saqlash" : "Pazl qo'shish"}
+              {isEditing ? "O'zgarishlarni saqlash" : "Variant qo'shish"}
             </Button>
             {isEditing ? (
               <Button
@@ -698,7 +728,7 @@ export function PuzzlesCrudPage() {
         {loading ? (
           <div className={debutsUi.loadingBox}>
             <InlineSpinner />
-            Pazllar yuklanmoqda…
+            Variantlar yuklanmoqda…
           </div>
         ) : items.length === 0 ? (
           <div className={debutsUi.empty}>Hali pazllar yo'q.</div>
@@ -721,7 +751,7 @@ export function PuzzlesCrudPage() {
                       )
                     }
                   >
-                    <ExternalLink className="h-3.5 w-3.5" />
+                    <ExternalLink className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
@@ -730,17 +760,18 @@ export function PuzzlesCrudPage() {
                     onClick={() => {
                       setAssignError(null);
                       setAssignMode("new");
+                      setAssignPracticeLimit("");
                       setAssignStudentId("");
                       setAssignOpenForPuzzleId(p.id);
                     }}
                   >
-                    <UserPlus className="h-3.5 w-3.5" />
+                    <UserPlus className="h-4 w-4" />
                   </button>
                   <button type="button" className={debutsUi.linkBtn} title="Tahrirlash" onClick={() => startEdit(p)}>
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-4 w-4" />
                   </button>
                   <button type="button" className={debutsUi.dangerBtn} title="O'chirish" onClick={() => void remove(p.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -761,7 +792,7 @@ export function PuzzlesCrudPage() {
             className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="text-sm font-semibold">Pazlni tayinlash</div>
+            <div className="text-sm font-semibold">Variantni tayinlash</div>
             <div className="mt-1 text-sm text-slate-600">
               O'quvchi va tayinlash rejimini tanlang.
             </div>
@@ -791,16 +822,25 @@ export function PuzzlesCrudPage() {
                         setAssignStudentId(id);
                         const existing = id ? assignmentsByStudentId.get(id) : null;
                         setAssignMode(existing?.mode ?? "new");
+                        setAssignPracticeLimit(existing?.practiceLimit ? String(existing.practiceLimit) : "");
                       }}
                       disabled={assignBusy}
                     >
                       {students.length === 0 ? <option value="">O'quvchilar yo'q</option> : null}
                       {students.map((s) => {
                         const a = assignmentsByStudentId.get(s.id);
+                        const hasPracticeCounter =
+                          typeof a?.practiceLimit === "number" &&
+                          typeof a?.practiceAttemptsUsed === "number";
+                        const practiceLeft = hasPracticeCounter
+                          ? Math.max(0, (a?.practiceLimit ?? 0) - (a?.practiceAttemptsUsed ?? 0))
+                          : null;
                         const status = a
                           ? a.completedAt
-                            ? `bajarildi (${a.mode})`
-                            : `tayinlandi (${a.mode})`
+                            ? `bajarildi (${assignmentModeLabel(a.mode)})`
+                            : a.mode === "test" && hasPracticeCounter
+                              ? `tayinlandi (${assignmentModeLabel(a.mode)} qoldi: ${practiceLeft})`
+                              : `tayinlandi (${assignmentModeLabel(a.mode)})`
                           : "tayinlanmagan";
                         return (
                           <option key={s.id} value={s.id}>
@@ -818,16 +858,40 @@ export function PuzzlesCrudPage() {
                     <select
                       className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-400"
                       value={assignMode}
-                      onChange={(e) =>
-                        setAssignMode(e.target.value as PuzzleAssignmentMode)
-                      }
+                      onChange={(e) => {
+                        const nextMode = e.target.value as PuzzleAssignmentMode;
+                        setAssignMode(nextMode);
+                        if (nextMode !== "test") setAssignPracticeLimit("");
+                      }}
                       disabled={assignBusy || !assignStudentId}
                     >
-                      <option value="new">new</option>
-                      <option value="test">test</option>
+                      <option value="new">o'rganish</option>
+                      <option value="test">mashq</option>
                     </select>
                   </label>
                 </div>
+
+                {assignMode === "test" ? (
+                  <label className="mt-3 grid gap-1">
+                    <span className="text-xs font-medium text-slate-700">
+                      Mashq urinishlar limiti (ixtiyoriy)
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      inputMode="numeric"
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-400"
+                      value={assignPracticeLimit}
+                      onChange={(e) => setAssignPracticeLimit(e.target.value)}
+                      disabled={assignBusy || !assignStudentId}
+                      placeholder="Cheklanmagan"
+                    />
+                    <span className="text-xs text-slate-500">
+                      Bo'sh qoldirilsa, mashq urinishlari cheklanmaydi.
+                    </span>
+                  </label>
+                ) : null}
 
                 {students.length > 0 ? (
                   <div className="mt-3 max-h-52 overflow-auto rounded-lg border border-slate-200">
@@ -851,6 +915,7 @@ export function PuzzlesCrudPage() {
                               if (assignBusy) return;
                               setAssignStudentId(s.id);
                               setAssignMode(a?.mode ?? "new");
+                              setAssignPracticeLimit(a?.practiceLimit ? String(a.practiceLimit) : "");
                             }}
                             onKeyDown={(e) => {
                               if (assignBusy) return;
@@ -858,6 +923,7 @@ export function PuzzlesCrudPage() {
                                 e.preventDefault();
                                 setAssignStudentId(s.id);
                                 setAssignMode(a?.mode ?? "new");
+                                setAssignPracticeLimit(a?.practiceLimit ? String(a.practiceLimit) : "");
                               }
                             }}
                             aria-disabled={assignBusy ? "true" : "false"}
@@ -881,7 +947,7 @@ export function PuzzlesCrudPage() {
                                       void unassign(a.id);
                                     }}
                                   >
-                                    <UserMinus className="h-3 w-3" />
+                                    <UserMinus className="h-4 w-4" />
                                   </button>
                                 ) : null}
                               </div>
@@ -892,7 +958,12 @@ export function PuzzlesCrudPage() {
                             <div className="shrink-0 text-xs">
                               {a ? (
                                 <span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-700">
-                                  {a.completedAt ? "bajarildi" : "tayinlandi"} · {a.mode}
+                                  {a.completedAt ? "bajarildi" : "tayinlandi"} · {assignmentModeLabel(a.mode)}
+                                  {a.mode === "test" &&
+                                  typeof a.practiceLimit === "number" &&
+                                  typeof a.practiceAttemptsUsed === "number"
+                                    ? ` · qoldi: ${Math.max(0, a.practiceLimit - a.practiceAttemptsUsed)}`
+                                    : ""}
                                 </span>
                               ) : (
                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
@@ -918,13 +989,26 @@ export function PuzzlesCrudPage() {
                   if (!puzzleId) return;
                   try {
                     setAssignError(null);
+                    let practiceLimit: number | undefined;
+                    if (assignMode === "test") {
+                      const raw = assignPracticeLimit.trim();
+                      if (raw.length > 0) {
+                        const parsed = Number(raw);
+                        if (!Number.isInteger(parsed) || parsed < 1) {
+                          setAssignError("Mashq limiti 1 yoki undan katta butun son bo'lishi kerak.");
+                          return;
+                        }
+                        practiceLimit = parsed;
+                      }
+                    }
                     await assignPuzzleMutation.mutateAsync({
                       puzzleId,
                       studentId: assignStudentId,
                       mode: assignMode,
+                      practiceLimit,
                     });
                   } catch (e) {
-                    setAssignError(e instanceof Error ? e.message : "Pazlni tayinlab bo'lmadi");
+                    setAssignError(e instanceof Error ? e.message : "Variantni tayinlab bo'lmadi");
                   }
                 }}
               >

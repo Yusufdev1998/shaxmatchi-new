@@ -209,7 +209,7 @@ export class DebutsService {
       .where(and(eq(puzzles.id, puzzleId), eq(puzzles.taskId, taskId)))
       .limit(1);
     const row = rows[0];
-    if (!row) throw new NotFoundException("Puzzle not found");
+    if (!row) throw new NotFoundException("Variant not found");
     return row;
   }
 
@@ -248,7 +248,7 @@ export class DebutsService {
       .where(and(eq(puzzles.id, puzzleId), eq(puzzles.taskId, taskId)))
       .returning();
     const row = rows[0];
-    if (!row) throw new NotFoundException("Puzzle not found");
+    if (!row) throw new NotFoundException("Variant not found");
     return row;
   }
 
@@ -259,7 +259,7 @@ export class DebutsService {
       .where(and(eq(puzzles.id, puzzleId), eq(puzzles.taskId, taskId)))
       .returning();
     const row = rows[0];
-    if (!row) throw new NotFoundException("Puzzle not found");
+    if (!row) throw new NotFoundException("Variant not found");
     return { ok: true };
   }
 
@@ -272,6 +272,7 @@ export class DebutsService {
     teacherId: string;
     studentId: string;
     mode: "new" | "test";
+    practiceLimit: number | null;
   }) {
     const db = this.getDb();
     await this.getPuzzle(input.levelId, input.courseId, input.moduleId, input.taskId, input.puzzleId);
@@ -297,6 +298,8 @@ export class DebutsService {
         .set({
           teacherId: input.teacherId,
           mode: input.mode,
+          practiceLimit: input.mode === "test" ? input.practiceLimit : null,
+          practiceAttemptsUsed: 0,
           assignedAt: new Date(),
           completedAt: null,
         })
@@ -312,6 +315,8 @@ export class DebutsService {
         teacherId: input.teacherId,
         studentId: input.studentId,
         mode: input.mode,
+        practiceLimit: input.mode === "test" ? input.practiceLimit : null,
+        practiceAttemptsUsed: 0,
       })
       .returning();
     return rows[0]!;
@@ -335,6 +340,8 @@ export class DebutsService {
         studentId: puzzleAssignments.studentId,
         studentLogin: users.login,
         mode: puzzleAssignments.mode,
+        practiceLimit: puzzleAssignments.practiceLimit,
+        practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
         assignedAt: puzzleAssignments.assignedAt,
         completedAt: puzzleAssignments.completedAt,
       })

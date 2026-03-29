@@ -1,4 +1,5 @@
 import {
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -106,6 +107,8 @@ export const puzzleAssignments = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     mode: puzzleAssignmentMode("mode").notNull().default("new"),
+    practiceLimit: integer("practice_limit"),
+    practiceAttemptsUsed: integer("practice_attempts_used").notNull().default(0),
     assignedAt: timestamp("assigned_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

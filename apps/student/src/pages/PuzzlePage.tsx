@@ -17,6 +17,10 @@ import { PieceDropHandlerArgs } from "react-chessboard";
 import { BookOpen, Repeat, Dumbbell, ChevronLeft, ChevronRight, CheckCircle, RotateCcw } from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
 
+function assignmentModeLabel(mode: "new" | "test"): string {
+  return mode === "test" ? "mashq" : "o'rganish";
+}
+
 export function PuzzlePage() {
   const { id } = useParams();
 
@@ -56,34 +60,16 @@ export function PuzzlePage() {
     setGame(new Chess());
     setMoveIdx(0);
     stopAutoplay();
-    if (puzzle.mode === "test") {
-      setMode("practice");
-    } else {
-      setMode(null);
-    }
+    // Always ask the student to pick the allowed mode when opening a variant.
+    setMode(null);
   }, [id, puzzle, stopAutoplay]);
 
-  const startAutoplay = React.useCallback(() => {
+  const startRepeat = React.useCallback(() => {
     stopAutoplay();
     setMoveIdx(0);
     setGame(new Chess());
-
-    let step = 0;
-    autoplayRef.current = window.setInterval(() => {
-      step += 1;
-      const g = new Chess();
-      for (let i = 0; i < step && i < puzzleMoves.length; i++) {
-        g.move(puzzleMoves[i].san);
-      }
-      setGame(g);
-      setMoveIdx(step);
-
-      if (step >= puzzleMoves.length) {
-        stopAutoplay();
-        setMode(null);
-      }
-    }, 700);
-  }, [puzzleMoves, stopAutoplay]);
+    setMode("repeat");
+  }, [stopAutoplay]);
 
   const setBoardToMove = React.useCallback(
     (idx: number) => {
@@ -97,13 +83,6 @@ export function PuzzlePage() {
     },
     [puzzleMoves],
   );
-
-  const startPractice = React.useCallback(() => {
-    stopAutoplay();
-    setMode("practice");
-    setGame(new Chess());
-    setMoveIdx(0);
-  }, [stopAutoplay]);
 
   const isPracticeComplete = mode === "practice" && moveIdx >= puzzleMoves.length;
   const isLocked = mode !== "practice" || isPracticeComplete;
@@ -150,16 +129,64 @@ export function PuzzlePage() {
     [fen, moveIdx, puzzleMoves, triggerWrongPracticeFeedback],
   );
 
+  const onRepeatPieceDrop = React.useCallback(
+    ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
+      if (!targetSquare) return false;
+      if (mode !== "repeat") return false;
+      if (moveIdx >= puzzleMoves.length) return false;
+      // In repeat mode, student plays only one side (opening side from initial position).
+      if (moveIdx % 2 !== 0) return false;
+
+      const from = sourceSquare as Square;
+      const to = targetSquare as Square;
+      const next = new Chess(fen);
+      const move = next.move({ from, to, promotion: "q" });
+      if (!move) {
+        triggerWrongPracticeFeedback();
+        return false;
+      }
+
+      const expectedSan = puzzleMoves[moveIdx]?.san;
+      if (!expectedSan || move.san !== expectedSan) {
+        triggerWrongPracticeFeedback();
+        return false;
+      }
+
+      setGame(next);
+      setMoveIdx((i) => i + 1);
+      return true;
+    },
+    [fen, mode, moveIdx, puzzleMoves, triggerWrongPracticeFeedback],
+  );
+
+  React.useEffect(() => {
+    if (mode !== "repeat") return;
+    if (moveIdx >= puzzleMoves.length) return;
+    // Auto-play opponent response after student makes a correct move.
+    if (moveIdx % 2 === 1) {
+      stopAutoplay();
+      autoplayRef.current = window.setTimeout(() => {
+        const expectedSan = puzzleMoves[moveIdx]?.san;
+        if (!expectedSan) return;
+        const next = new Chess(fen);
+        const move = next.move(expectedSan);
+        if (!move) return;
+        setGame(next);
+        setMoveIdx((i) => i + 1);
+      }, 450);
+    }
+  }, [fen, mode, moveIdx, puzzleMoves, stopAutoplay]);
+
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
 
   if (!id) {
-    return <div className="text-sm text-slate-600">Pazl id topilmadi</div>;
+    return <div className="text-sm text-slate-600">Variant id topilmadi</div>;
   }
 
   if (puzzleQuery.isLoading) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm sm:p-4">
-        Pazl yuklanmoqda...
+        Variant yuklanmoqda...
       </div>
     );
   }
@@ -167,46 +194,56 @@ export function PuzzlePage() {
   if (puzzleQuery.error || !puzzle) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <div className="text-sm font-semibold">Pazl qulflangan</div>
+        <div className="text-sm font-semibold">Variant qulflangan</div>
         <div className="mt-1 text-sm text-slate-600">
-          Bu pazl sizga hali tayinlanmagan.
+          Bu variant sizga hali tayinlanmagan yoki mashq urinishlar limiti tugagan.
         </div>
       </div>
     );
   }
 
   const isTestAssignment = puzzle.mode === "test";
+  const isRepeatComplete = mode === "repeat" && moveIdx >= puzzleMoves.length;
+  const isRepeatStudentTurn = mode === "repeat" && moveIdx < puzzleMoves.length && moveIdx % 2 === 0;
+  const practiceAttemptsUsed =
+    typeof puzzle.practiceAttemptsUsed === "number" ? puzzle.practiceAttemptsUsed : null;
+  const practiceLimit =
+    typeof puzzle.practiceLimit === "number" ? puzzle.practiceLimit : null;
 
   return (
     <div className="space-y-3">
-      {mode === null && !isTestAssignment ? (
+      {mode === null ? (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" />
           <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
             <div className="text-sm font-semibold">Rejimni tanlang</div>
             <div className="mt-1 text-sm text-slate-600">Nima qilmoqchisiz?</div>
             <div className="mt-4 grid gap-2">
-              <Button
-                onClick={() => {
-                  stopAutoplay();
-                  setMode("study");
-                  setBoardToMove(0);
-                }}
-              >
-                <BookOpen className="mr-2 h-4 w-4" /> Yurishlarni o'rganish
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setMode("repeat");
-                  startAutoplay();
-                }}
-              >
-                <Repeat className="mr-2 h-4 w-4" /> Yurishlarni takrorlash
-              </Button>
-              <Button variant="secondary" onClick={startPractice}>
-                <Dumbbell className="mr-2 h-4 w-4" /> Mashq
-              </Button>
+              {isTestAssignment ? (
+                <Button onClick={() => setMode("practice")}>
+                  <Dumbbell className="mr-2 h-4 w-4" /> Mashq
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    onClick={() => {
+                      stopAutoplay();
+                      setMode("study");
+                      setBoardToMove(0);
+                    }}
+                  >
+                    <BookOpen className="mr-2 h-4 w-4" /> Yurishlarni o'rganish
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      startRepeat();
+                    }}
+                  >
+                    <Repeat className="mr-2 h-4 w-4" /> Yurishlarni takrorlash
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -221,7 +258,7 @@ export function PuzzlePage() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Pazl</BreadcrumbPage>
+            <BreadcrumbPage>Variant</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -233,9 +270,19 @@ export function PuzzlePage() {
           </div>
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Pazl id: <span className="font-mono text-xs">{id ?? "unknown"}</span>
+          Variant id: <span className="font-mono text-xs">{id ?? "unknown"}</span>
           {" · "}
-          Rejim: <span className="font-mono text-xs">{puzzle.mode}</span>
+          Rejim: <span className="font-mono text-xs">{assignmentModeLabel(puzzle.mode)}</span>
+          {puzzle.mode === "test" && practiceAttemptsUsed !== null ? (
+            <>
+              {" · "}
+              Urinishlar:{" "}
+              <span className="font-mono text-xs">
+                {practiceAttemptsUsed}
+                {practiceLimit !== null ? `/${practiceLimit}` : ""}
+              </span>
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -243,7 +290,15 @@ export function PuzzlePage() {
         <div
           ref={practiceBoardWrapRef}
           className={`mb-2 origin-center will-change-transform ${
-            isLocked ? "pointer-events-none select-none" : ""
+            mode === "practice"
+              ? isLocked
+                ? "pointer-events-none select-none"
+                : ""
+              : mode === "repeat"
+                ? isRepeatStudentTurn
+                  ? ""
+                  : "pointer-events-none select-none"
+                : "pointer-events-none select-none"
           }`}
           onAnimationEnd={(e) => {
             if (!e.animationName.includes("board-shake")) return;
@@ -253,7 +308,7 @@ export function PuzzlePage() {
           <BaseChessboard
             options={{
               position: fen,
-              onPieceDrop: mode === "practice" ? onPracticePieceDrop : undefined,
+              onPieceDrop: mode === "practice" ? onPracticePieceDrop : mode === "repeat" ? onRepeatPieceDrop : undefined,
             }}
           />
         </div>
@@ -284,12 +339,17 @@ export function PuzzlePage() {
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-semibold">Yurishlar</div>
-            <Button size="sm" variant="secondary" onClick={startAutoplay}>
+            <Button size="sm" variant="secondary" onClick={startRepeat}>
               <RotateCcw className="mr-1 h-4 w-4" /> Replay
             </Button>
           </div>
           <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-            {moveIdx === 0 ? <div>Boshlash uchun “Replay” ni bosing.</div> : null}
+            {isRepeatComplete ? <div>Takrorlash yakunlandi.</div> : null}
+            {mode === "repeat" && !isRepeatComplete ? (
+              <div className="text-xs text-slate-500">
+                Navbat: {isRepeatStudentTurn ? "siz" : "raqib (avtomatik)"}
+              </div>
+            ) : null}
             {moveIdx > 0 ? (
               <>
                 <div className="font-mono text-xs text-slate-500">

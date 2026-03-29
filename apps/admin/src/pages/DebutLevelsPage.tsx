@@ -156,28 +156,42 @@ export function DebutLevelsPage() {
         ) : (
           <div className={debutsUi.listRows}>
             {levels.map((l) => (
-              <div key={l.id} className={[debutsUi.row, debutsUi.rowHover].join(" ")}>
+              <div
+                key={l.id}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                className={[debutsUi.row, debutsUi.rowHover, busy ? "" : "cursor-pointer"].join(" ")}
+                onClick={() => {
+                  if (busy) return;
+                  navigate(`/debuts/levels/${l.id}/courses`);
+                }}
+                onKeyDown={(e) => {
+                  if (busy) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/debuts/levels/${l.id}/courses`);
+                  }
+                }}
+                aria-disabled={busy ? "true" : "false"}
+              >
                 <div className="min-w-0 flex-1">
                   <TruncatedText text={l.name} className="text-sm font-medium text-slate-900" />
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => navigate(`/debuts/levels/${l.id}/courses`)}
-                  >
-                    Kurslar
-                  </Button>
-                  <button type="button" className={debutsUi.linkBtn} disabled={busy} title="Tahrirlash" onClick={() => {
+                  <button type="button" className={debutsUi.linkBtn} disabled={busy} title="Tahrirlash" onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     setEditingId(l.id);
                     setEditingValue(l.name);
                   }}>
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-4 w-4" />
                   </button>
-                  <button type="button" className={debutsUi.dangerBtn} disabled={busy} title="O'chirish" onClick={() => void remove(l.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <button type="button" className={debutsUi.dangerBtn} disabled={busy} title="O'chirish" onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void remove(l.id);
+                  }}>
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>

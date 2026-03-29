@@ -12,9 +12,20 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
+    const error = new Error(text || `HTTP ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   return (await res.json()) as T;
+}
+
+function isPracticeLimitNotSupportedError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("property practicelimit should not exist") ||
+    message.includes('"practicelimit" should not exist')
+  );
 }
 
 export type Level = { id: string; name: string; createdAt: string };
@@ -31,6 +42,8 @@ export type PuzzleAssignment = {
   studentId: string;
   studentLogin?: string;
   mode: PuzzleAssignmentMode;
+  practiceLimit: number | null;
+  practiceAttemptsUsed: number;
   assignedAt: string;
   completedAt: string | null;
 };
@@ -130,12 +143,22 @@ export const adminDebutsApi = {
     moduleId: string,
     taskId: string,
     puzzleId: string,
-    input: { studentId: string; mode: PuzzleAssignmentMode },
+    input: { studentId: string; mode: PuzzleAssignmentMode; practiceLimit?: number },
   ) =>
-    api<PuzzleAssignment>(
-      `/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles/${puzzleId}/assignments`,
-      { method: "POST", body: JSON.stringify(input) },
-    ),
+    (async () => {
+      const path = `/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles/${puzzleId}/assignments`;
+      if (input.practiceLimit === undefined) {
+        return api<PuzzleAssignment>(path, { method: "POST", body: JSON.stringify(input) });
+      }
+      try {
+        return await api<PuzzleAssignment>(path, { method: "POST", body: JSON.stringify(input) });
+      } catch (e) {
+        const status = typeof e === "object" && e !== null && "status" in e ? (e as { status?: number }).status : undefined;
+        if (status !== 400 && !isPracticeLimitNotSupportedError(e)) throw e;
+        const { practiceLimit: _ignored, ...legacyInput } = input;
+        return api<PuzzleAssignment>(path, { method: "POST", body: JSON.stringify(legacyInput) });
+      }
+    })(),
 
   listPuzzleAssignments: (levelId: string, courseId: string, moduleId: string, taskId: string, puzzleId: string) =>
     api<PuzzleAssignment[]>(

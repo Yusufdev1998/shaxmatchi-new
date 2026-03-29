@@ -107,7 +107,7 @@ export function TaskPage() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <div className="text-sm font-semibold">Pazllar</div>
+        <div className="text-sm font-semibold">Variantlar</div>
         <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
           {task.puzzles.map((p) => (
             <button

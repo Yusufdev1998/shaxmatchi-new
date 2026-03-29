@@ -203,6 +203,7 @@ export class DebutsController {
       teacherId: req.user.sub,
       studentId: dto.studentId,
       mode: dto.mode,
+      practiceLimit: dto.practiceLimit ?? null,
     });
   }
 

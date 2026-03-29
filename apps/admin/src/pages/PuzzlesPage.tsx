@@ -196,7 +196,7 @@ export function PuzzlePracticePage() {
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
 
   if (loading) {
-    return <LoadingCard title="Pazl yuklanmoqda…" lines={4} compact />;
+    return <LoadingCard title="Variant yuklanmoqda…" lines={4} compact />;
   }
 
   if (!puzzle) {
@@ -217,15 +217,15 @@ export function PuzzlePracticePage() {
               to: `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks`,
             },
             {
-              label: "Pazllar",
+              label: "Variantlar",
               to: `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks/${taskIdSafe}/puzzles`,
             },
             { label: "Mashq" },
           ]}
         />
         <div className={`${debutsUi.card} p-3 sm:p-4`}>
-          <div className="text-sm font-semibold">Pazl topilmadi</div>
-          <div className="mt-0.5 text-xs text-slate-600">Pazllar ro'yxatiga qaytish.</div>
+          <div className="text-sm font-semibold">Variant topilmadi</div>
+          <div className="mt-0.5 text-xs text-slate-600">Variantlar ro'yxatiga qaytish.</div>
           <div className="mt-2">
             <Button size="sm" variant="secondary" onClick={() => navigate(-1)}>
               Orqaga
@@ -292,7 +292,7 @@ export function PuzzlePracticePage() {
             to: `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks`,
           },
           {
-            label: "Pazllar",
+            label: "Variantlar",
             to: `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks/${taskIdSafe}/puzzles`,
           },
           { label: puzzle.name },

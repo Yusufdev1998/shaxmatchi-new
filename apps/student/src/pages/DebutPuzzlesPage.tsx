@@ -10,7 +10,12 @@ import {
 } from "@shaxmatchi/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { BookOpen, Dumbbell } from "lucide-react";
 import { studentDebutsApi } from "../api/studentDebutsApi";
+
+function assignmentModeLabel(mode: "new" | "test"): string {
+  return mode === "test" ? "mashq" : "o'rganish";
+}
 
 export function DebutPuzzlesPage() {
   const navigate = useNavigate();
@@ -73,7 +78,7 @@ export function DebutPuzzlesPage() {
       </Breadcrumb>
 
       <div>
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Pazllar</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Variantlar</h1>
         <p className="mt-1 text-sm text-slate-600">Vazifa: {taskName}</p>
       </div>
 
@@ -89,32 +94,69 @@ export function DebutPuzzlesPage() {
         </div>
       ) : puzzles.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-600">
-          Bu vazifada tayinlangan pazllar yo'q.
+          Bu vazifada tayinlangan variantlar yo'q.
         </div>
       ) : (
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
           {puzzles.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
-              onClick={() => navigate(`/puzzle/${p.id}`)}
-            >
+            <div key={p.id} className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50">
+              {(() => {
+                const practiceAttemptsUsed =
+                  typeof p.assignment.practiceAttemptsUsed === "number"
+                    ? p.assignment.practiceAttemptsUsed
+                    : null;
+                const practiceLimit =
+                  typeof p.assignment.practiceLimit === "number"
+                    ? p.assignment.practiceLimit
+                    : null;
+                const isPracticeLimitReached =
+                  practiceLimit !== null &&
+                  practiceAttemptsUsed !== null &&
+                  practiceAttemptsUsed >= practiceLimit;
+                return (
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <TruncatedText text={p.name} className="text-sm font-medium text-slate-900" />
                   {p.assignment ? (
                     <div className="mt-0.5 text-xs text-slate-500">
-                      Rejim: {p.assignment.mode}
+                      Rejim: {assignmentModeLabel(p.assignment.mode)}
+                      {p.assignment.mode === "test" && practiceAttemptsUsed !== null ? (
+                        <>
+                          {" · "}Urinishlar: {practiceAttemptsUsed}
+                          {practiceLimit !== null ? `/${practiceLimit}` : ""}
+                        </>
+                      ) : null}
                       {p.assignment.completedAt ? " · bajarildi" : ""}
                     </div>
                   ) : null}
                 </div>
-                <div className="shrink-0">
-                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">o'ynash</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    title="O'rganish"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={p.assignment.mode !== "new"}
+                    onClick={() => navigate(`/puzzle/${p.id}?mode=study`)}
+                  >
+                    <BookOpen className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Mashq"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={
+                      p.assignment.mode !== "test" ||
+                      isPracticeLimitReached
+                    }
+                    onClick={() => navigate(`/puzzle/${p.id}?mode=practice`)}
+                  >
+                    <Dumbbell className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
-            </button>
+                );
+              })()}
+            </div>
           ))}
         </div>
       )}

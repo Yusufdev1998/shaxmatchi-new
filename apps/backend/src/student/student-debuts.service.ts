@@ -48,6 +48,8 @@ export class StudentDebutsService {
         puzzleCreatedAt: puzzles.createdAt,
         assignmentId: puzzleAssignments.id,
         assignmentMode: puzzleAssignments.mode,
+        assignmentPracticeLimit: puzzleAssignments.practiceLimit,
+        assignmentPracticeAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
         assignmentAssignedAt: puzzleAssignments.assignedAt,
         assignmentCompletedAt: puzzleAssignments.completedAt,
       })
@@ -73,6 +75,8 @@ export class StudentDebutsService {
       assignment: {
         id: string;
         mode: "new" | "test";
+        practiceLimit: number | null;
+        practiceAttemptsUsed: number;
         assignedAt: Date;
         completedAt: Date | null;
       };
@@ -144,6 +148,8 @@ export class StudentDebutsService {
         assignment: {
           id: r.assignmentId,
           mode: r.assignmentMode,
+          practiceLimit: r.assignmentPracticeLimit,
+          practiceAttemptsUsed: r.assignmentPracticeAttemptsUsed ?? 0,
           assignedAt: r.assignmentAssignedAt,
           completedAt: r.assignmentCompletedAt ?? null,
         },
@@ -318,6 +324,8 @@ export class StudentDebutsService {
         createdAt: puzzles.createdAt,
         assignmentId: puzzleAssignments.id,
         mode: puzzleAssignments.mode,
+        practiceLimit: puzzleAssignments.practiceLimit,
+        practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
         assignedAt: puzzleAssignments.assignedAt,
         completedAt: puzzleAssignments.completedAt,
       })
@@ -341,6 +349,8 @@ export class StudentDebutsService {
       assignment: {
         id: r.assignmentId,
         mode: r.mode!,
+        practiceLimit: r.practiceLimit ?? null,
+        practiceAttemptsUsed: r.practiceAttemptsUsed ?? 0,
         assignedAt: r.assignedAt!,
         completedAt: r.completedAt ?? null,
       },
@@ -354,16 +364,31 @@ export class StudentDebutsService {
       .select({
         assignmentId: puzzleAssignments.id,
         mode: puzzleAssignments.mode,
+        practiceLimit: puzzleAssignments.practiceLimit,
+        practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
       })
       .from(puzzleAssignments)
       .where(and(eq(puzzleAssignments.puzzleId, input.puzzleId), eq(puzzleAssignments.studentId, input.studentId)))
       .limit(1);
     const assignment = a[0];
-    if (!assignment) throw new ForbiddenException("Puzzle is locked");
+    if (!assignment) throw new ForbiddenException("Variant is locked");
 
     const rows = await db.select().from(puzzles).where(eq(puzzles.id, input.puzzleId)).limit(1);
     const puzzle = rows[0];
-    if (!puzzle) throw new NotFoundException("Puzzle not found");
+    if (!puzzle) throw new NotFoundException("Variant not found");
+
+    let practiceAttemptsUsed = assignment.practiceAttemptsUsed ?? 0;
+    if (assignment.mode === "test") {
+      if (assignment.practiceLimit !== null && practiceAttemptsUsed >= assignment.practiceLimit) {
+        throw new ForbiddenException("Mashq urinishlar limiti tugagan");
+      }
+      const updated = await db
+        .update(puzzleAssignments)
+        .set({ practiceAttemptsUsed: practiceAttemptsUsed + 1 })
+        .where(eq(puzzleAssignments.id, assignment.assignmentId))
+        .returning({ practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed });
+      practiceAttemptsUsed = updated[0]?.practiceAttemptsUsed ?? practiceAttemptsUsed + 1;
+    }
 
     return {
       id: puzzle.id,
@@ -372,6 +397,8 @@ export class StudentDebutsService {
       moves: puzzle.moves,
       createdAt: puzzle.createdAt,
       mode: assignment.mode,
+      practiceLimit: assignment.practiceLimit ?? null,
+      practiceAttemptsUsed,
     };
   }
 }
