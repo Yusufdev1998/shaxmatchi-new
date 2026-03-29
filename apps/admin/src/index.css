@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+@keyframes board-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  15% {
+    transform: translate3d(-7px, 0, 0);
+  }
+  30% {
+    transform: translate3d(7px, 0, 0);
+  }
+  45% {
+    transform: translate3d(-5px, 0, 0);
+  }
+  60% {
+    transform: translate3d(5px, 0, 0);
+  }
+  75% {
+    transform: translate3d(-2px, 0, 0);
+  }
+  90% {
+    transform: translate3d(2px, 0, 0);
+  }
+}
+
+.animate-board-shake {
+  animation: board-shake 0.45s ease-in-out;
+}

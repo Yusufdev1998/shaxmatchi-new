@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "puzzle_assignments_puzzle_student_unique" ON "puzzle_assignments" USING btree ("puzzle_id","student_id");

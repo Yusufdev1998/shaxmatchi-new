@@ -14,5 +14,10 @@ export class AppController {
   getHealth() {
     return this.appService.getHealth();
   }
+
+  @Get("debuts/levels")
+  getDebutLevels() {
+    return this.appService.getDebutLevels();
+  }
 }
 
