@@ -223,12 +223,17 @@ export class DebutsService {
     courseId: string,
     moduleId: string,
     taskId: string,
-    input: { name: string; moves: Array<{ san: string; explanation: string }> },
+    input: {
+      name: string;
+      moves: Array<{ san: string; explanation: string }>;
+      studentSide?: "white" | "black";
+    },
   ) {
     await this.getTask(levelId, courseId, moduleId, taskId);
+    const studentSide = input.studentSide ?? "white";
     const rows = await this.getDb()
       .insert(puzzles)
-      .values({ taskId, name: input.name, moves: input.moves })
+      .values({ taskId, name: input.name, moves: input.moves, studentSide })
       .returning();
     return rows[0]!;
   }
@@ -239,12 +244,20 @@ export class DebutsService {
     moduleId: string,
     taskId: string,
     puzzleId: string,
-    input: { name: string; moves: Array<{ san: string; explanation: string }> },
+    input: {
+      name: string;
+      moves: Array<{ san: string; explanation: string }>;
+      studentSide?: "white" | "black";
+    },
   ) {
     await this.getTask(levelId, courseId, moduleId, taskId);
     const rows = await this.getDb()
       .update(puzzles)
-      .set({ name: input.name, moves: input.moves })
+      .set({
+        name: input.name,
+        moves: input.moves,
+        ...(input.studentSide !== undefined ? { studentSide: input.studentSide } : {}),
+      })
       .where(and(eq(puzzles.id, puzzleId), eq(puzzles.taskId, taskId)))
       .returning();
     const row = rows[0];

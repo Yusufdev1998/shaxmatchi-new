@@ -3,6 +3,7 @@ import { AuthService } from "./auth.service";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { BootstrapTeacherDto } from "./dto/bootstrap-teacher.dto";
 import { LoginDto } from "./dto/login.dto";
+import { TelegramLoginDto } from "./dto/telegram-login.dto";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import type { JwtUserPayload } from "./jwt.types";
 import { TeacherOnlyGuard } from "./teacher-only.guard";
@@ -14,6 +15,11 @@ export class AuthController {
   @Post("login")
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post("telegram")
+  telegramLogin(@Body() dto: TelegramLoginDto) {
+    return this.authService.telegramLogin(dto);
   }
 
   // One-time endpoint to create the first teacher account.

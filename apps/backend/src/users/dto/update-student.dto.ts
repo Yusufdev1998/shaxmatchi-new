@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from "class-validator";
+import { IsOptional, IsString, Matches, MinLength } from "class-validator";
 
 export class UpdateStudentDto {
   @IsOptional()
@@ -9,5 +9,10 @@ export class UpdateStudentDto {
   @IsString()
   @MinLength(4)
   password?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+$/)
+  telegramId?: string;
 }
 

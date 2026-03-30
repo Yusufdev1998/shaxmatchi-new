@@ -3,6 +3,7 @@ import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-d
 import { Button } from "@shaxmatchi/ui";
 import { Download, LogOut, Home, Swords } from "lucide-react";
 import { clearAuthSession, getAuthToken, getAuthUser } from "../auth/auth";
+import { isTelegramMiniApp } from "../auth/telegram";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -16,6 +17,7 @@ export function AppLayout() {
   const user = getAuthUser();
   const [deferredPrompt, setDeferredPrompt] = React.useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = React.useState(false);
+  const inTelegram = isTelegramMiniApp();
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -73,7 +75,7 @@ export function AppLayout() {
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden text-xs text-slate-600 sm:block">{user.login}</div>
-              {!isStandalone && deferredPrompt ? (
+              {!inTelegram && !isStandalone && deferredPrompt ? (
                 <Button
                   variant="secondary"
                   className="h-8 px-3"
@@ -88,16 +90,18 @@ export function AppLayout() {
                   <Download className="mr-1 h-3.5 w-3.5" /> Yuklab olish
                 </Button>
               ) : null}
-              <Button
-                variant="secondary"
-                className="h-8 px-3"
-                onClick={() => {
-                  clearAuthSession();
-                  navigate("/login", { replace: true });
-                }}
-              >
-                <LogOut className="mr-1 h-3.5 w-3.5" /> Chiqish
-              </Button>
+              {!inTelegram ? (
+                <Button
+                  variant="secondary"
+                  className="h-8 px-3"
+                  onClick={() => {
+                    clearAuthSession();
+                    navigate("/login", { replace: true });
+                  }}
+                >
+                  <LogOut className="mr-1 h-3.5 w-3.5" /> Chiqish
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>

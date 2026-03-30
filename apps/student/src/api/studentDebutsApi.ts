@@ -42,11 +42,13 @@ export type StudentPuzzleSummary = {
 };
 
 export type PuzzleMove = { san: string; explanation: string };
+export type PuzzleStudentSide = "white" | "black";
 export type StudentPuzzleDetail = {
   id: string;
   taskId: string;
   name: string;
   moves: PuzzleMove[];
+  studentSide: PuzzleStudentSide;
   createdAt: string;
   mode: AssignmentMode;
   practiceLimit: number | null;

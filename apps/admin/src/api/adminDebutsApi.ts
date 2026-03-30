@@ -33,7 +33,15 @@ export type Course = { id: string; debutLevelId: string; name: string; createdAt
 export type Module = { id: string; courseId: string; name: string; createdAt: string };
 export type Task = { id: string; moduleId: string; name: string; createdAt: string };
 export type PuzzleMove = { san: string; explanation: string };
-export type Puzzle = { id: string; taskId: string; name: string; moves: PuzzleMove[]; createdAt: string };
+export type PuzzleStudentSide = "white" | "black";
+export type Puzzle = {
+  id: string;
+  taskId: string;
+  name: string;
+  moves: PuzzleMove[];
+  studentSide: PuzzleStudentSide;
+  createdAt: string;
+};
 export type PuzzleAssignmentMode = "new" | "test";
 export type PuzzleAssignment = {
   id: string;
@@ -112,7 +120,7 @@ export const adminDebutsApi = {
     courseId: string,
     moduleId: string,
     taskId: string,
-    input: { name: string; moves: PuzzleMove[] },
+    input: { name: string; moves: PuzzleMove[]; studentSide?: PuzzleStudentSide },
   ) =>
     api<Puzzle>(`/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles`, {
       method: "POST",
@@ -124,7 +132,7 @@ export const adminDebutsApi = {
     moduleId: string,
     taskId: string,
     puzzleId: string,
-    input: { name: string; moves: PuzzleMove[] },
+    input: { name: string; moves: PuzzleMove[]; studentSide?: PuzzleStudentSide },
   ) =>
     api<Puzzle>(
       `/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles/${puzzleId}`,

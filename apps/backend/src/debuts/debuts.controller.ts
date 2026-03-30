@@ -155,6 +155,7 @@ export class DebutsController {
     return this.debuts.createPuzzle(levelId, courseId, moduleId, taskId, {
       name: dto.name,
       moves: dto.moves,
+      studentSide: dto.studentSide,
     });
   }
 
@@ -170,6 +171,7 @@ export class DebutsController {
     return this.debuts.updatePuzzle(levelId, courseId, moduleId, taskId, puzzleId, {
       name: dto.name,
       moves: dto.moves,
+      studentSide: dto.studentSide,
     });
   }
 

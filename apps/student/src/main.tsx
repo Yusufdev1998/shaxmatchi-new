@@ -5,9 +5,11 @@ import { ShaxTooltipProvider } from "@shaxmatchi/ui";
 import { registerSW } from "virtual:pwa-register";
 import { App } from "./App";
 import { queryClient } from "./queryClient";
+import { initTelegramMiniApp } from "./auth/telegram";
 import "./index.css";
 
 registerSW({ immediate: true });
+initTelegramMiniApp();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

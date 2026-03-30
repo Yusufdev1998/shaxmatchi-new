@@ -11,19 +11,43 @@ import {
 
 export const userType = pgEnum("user_type", ["student", "teacher"]);
 export const puzzleAssignmentMode = pgEnum("puzzle_assignment_mode", ["new", "test"]);
+export const puzzleStudentSide = pgEnum("puzzle_student_side", ["white", "black"]);
 
-export const users = pgTable("users", {
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    type: userType("type").notNull(),
+    login: text("login").notNull().unique(),
+    password: text("password").notNull(),
+    telegramId: text("telegram_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    telegramIdUniqueIdx: uniqueIndex("users_telegram_id_uq").on(table.telegramId),
+  }),
+);
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+/** One-time deep-link tokens for linking a Telegram account to a student (t.me/bot?start=TOKEN). */
+export const telegramLinkTokens = pgTable("telegram_link_tokens", {
   id: uuid("id").defaultRandom().primaryKey(),
-  type: userType("type").notNull(),
-  login: text("login").notNull().unique(),
-  password: text("password").notNull(),
+  token: text("token").notNull().unique(),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
+export type TelegramLinkToken = typeof telegramLinkTokens.$inferSelect;
+export type NewTelegramLinkToken = typeof telegramLinkTokens.$inferInsert;
 
 export const debutLevels = pgTable("debut_levels", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -85,6 +109,8 @@ export const puzzles = pgTable("puzzles", {
     .references(() => tasks.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   moves: jsonb("moves").notNull(),
+  /** Which side the student plays in mashq/takrorlash (line index 0 = White from start). */
+  studentSide: puzzleStudentSide("student_side").notNull().default("white"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

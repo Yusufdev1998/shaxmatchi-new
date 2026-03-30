@@ -1,4 +1,4 @@
-import { IsString, MinLength } from "class-validator";
+import { IsOptional, IsString, Matches, MinLength } from "class-validator";
 
 export class CreateStudentDto {
   @IsString()
@@ -7,5 +7,10 @@ export class CreateStudentDto {
   @IsString()
   @MinLength(4)
   password!: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+$/)
+  telegramId?: string;
 }
 

@@ -2,10 +2,14 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import path from "node:path";
 import { VitePWA } from "vite-plugin-pwa";
+import mkcert from "vite-plugin-mkcert";
 
 export default defineConfig({
   plugins: [
     react(),
+    mkcert({
+      hosts: ["localhost", "127.0.0.1"],
+    }),
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
@@ -78,6 +82,8 @@ export default defineConfig({
     }),
   ],
   server: {
+    https: true,
+    host: true,
     port: 5174,
     strictPort: true,
     fs: {

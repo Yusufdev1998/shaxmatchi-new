@@ -13,12 +13,24 @@ import {
   TruncatedText,
 } from "@shaxmatchi/ui";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { PieceDropHandlerArgs } from "react-chessboard";
+import type { PieceDropHandlerArgs } from "react-chessboard";
 import { BookOpen, Repeat, Dumbbell, ChevronLeft, ChevronRight, CheckCircle, RotateCcw } from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
+import { playMoveSound } from "../lib/playMoveSound";
 
-function assignmentModeLabel(mode: "new" | "test"): string {
-  return mode === "test" ? "mashq" : "o'rganish";
+function assignmentModeTitle(mode: "new" | "test"): string {
+  return mode === "test" ? "Mashq" : "O'rganish";
+}
+
+type PuzzleStudentSide = "white" | "black";
+
+/** Line index 0 = White from initial position; student may play white or black indices. */
+function isStudentMoveAtIndex(side: PuzzleStudentSide, moveIdx: number): boolean {
+  return side === "white" ? moveIdx % 2 === 0 : moveIdx % 2 === 1;
+}
+
+function isOpponentMoveAtIndex(side: PuzzleStudentSide, moveIdx: number): boolean {
+  return !isStudentMoveAtIndex(side, moveIdx);
 }
 
 function normalizeExplanationHtml(html: string): string {
@@ -173,6 +185,8 @@ export function PuzzlePage() {
       const from = sourceSquare as Square;
       const to = targetSquare as Square;
       if (moveIdx >= puzzleMoves.length) return false;
+      const side: PuzzleStudentSide = puzzle?.studentSide === "black" ? "black" : "white";
+      if (!isStudentMoveAtIndex(side, moveIdx)) return false;
 
       const next = new Chess(fen);
       const move = next.move({ from, to, promotion: "q" });
@@ -187,6 +201,7 @@ export function PuzzlePage() {
         return false;
       }
 
+      playMoveSound();
       setGame(next);
       setMoveIdx((i) => i + 1);
       return true;
@@ -199,8 +214,8 @@ export function PuzzlePage() {
       if (!targetSquare) return false;
       if (mode !== "repeat") return false;
       if (moveIdx >= puzzleMoves.length) return false;
-      // In repeat mode, student plays only one side (opening side from initial position).
-      if (moveIdx % 2 !== 0) return false;
+      const side: PuzzleStudentSide = puzzle?.studentSide === "black" ? "black" : "white";
+      if (!isStudentMoveAtIndex(side, moveIdx)) return false;
 
       const from = sourceSquare as Square;
       const to = targetSquare as Square;
@@ -217,30 +232,32 @@ export function PuzzlePage() {
         return false;
       }
 
+      playMoveSound();
       setGame(next);
       setMoveIdx((i) => i + 1);
       return true;
     },
-    [fen, mode, moveIdx, puzzleMoves, triggerWrongPracticeFeedback],
+    [fen, mode, moveIdx, puzzle, puzzleMoves, triggerWrongPracticeFeedback],
   );
 
   React.useEffect(() => {
-    if (mode !== "repeat") return;
+    if (!puzzle) return;
+    if (mode !== "repeat" && mode !== "practice") return;
     if (moveIdx >= puzzleMoves.length) return;
-    // Auto-play opponent response after student makes a correct move.
-    if (moveIdx % 2 === 1) {
-      stopAutoplay();
-      autoplayRef.current = window.setTimeout(() => {
-        const expectedSan = puzzleMoves[moveIdx]?.san;
-        if (!expectedSan) return;
-        const next = new Chess(fen);
-        const move = next.move(expectedSan);
-        if (!move) return;
-        setGame(next);
-        setMoveIdx((i) => i + 1);
-      }, 450);
-    }
-  }, [fen, mode, moveIdx, puzzleMoves, stopAutoplay]);
+    const side: PuzzleStudentSide = puzzle.studentSide === "black" ? "black" : "white";
+    if (!isOpponentMoveAtIndex(side, moveIdx)) return;
+    stopAutoplay();
+    autoplayRef.current = window.setTimeout(() => {
+      const expectedSan = puzzleMoves[moveIdx]?.san;
+      if (!expectedSan) return;
+      const next = new Chess(fen);
+      const move = next.move(expectedSan);
+      if (!move) return;
+      playMoveSound();
+      setGame(next);
+      setMoveIdx((i) => i + 1);
+    }, 450);
+  }, [puzzle, fen, mode, moveIdx, puzzleMoves, stopAutoplay]);
 
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
   React.useEffect(
@@ -300,8 +317,12 @@ export function PuzzlePage() {
   }
 
   const isTestAssignment = puzzle.mode === "test";
+  const studentSide: PuzzleStudentSide = puzzle.studentSide === "black" ? "black" : "white";
   const isRepeatComplete = mode === "repeat" && moveIdx >= puzzleMoves.length;
-  const isRepeatStudentTurn = mode === "repeat" && moveIdx < puzzleMoves.length && moveIdx % 2 === 0;
+  const isRepeatStudentTurn =
+    mode === "repeat" && moveIdx < puzzleMoves.length && isStudentMoveAtIndex(studentSide, moveIdx);
+  const isPracticeStudentTurn =
+    mode === "practice" && moveIdx < puzzleMoves.length && isStudentMoveAtIndex(studentSide, moveIdx);
   const isPracticeBoardLocked = isLocked || isPracticeResetting;
 
   return (
@@ -382,27 +403,34 @@ export function PuzzlePage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          <div className="min-w-0">
+      <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:p-3">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h1 className="min-w-0 flex-1 text-lg font-semibold tracking-tight sm:text-xl">
             <TruncatedText text={puzzle.name} maxLines={3} className="font-semibold text-inherit" />
-          </div>
-        </h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Variant id: <span className="font-mono text-xs">{id ?? "unknown"}</span>
-          {" · "}
-          Rejim: <span className="font-mono text-xs">{assignmentModeLabel(puzzle.mode)}</span>
-          {puzzle.mode === "test" && practiceAttemptsUsed !== null ? (
-            <>
-              {" · "}
-              Urinishlar:{" "}
-              <span className="font-mono text-xs">
-                {practiceAttemptsUsed}
-                {practiceLimit !== null ? `/${practiceLimit}` : ""}
-              </span>
-            </>
-          ) : null}
-        </p>
+          </h1>
+          <span
+            className="inline-flex shrink-0 items-center gap-1.5 text-sm text-slate-600"
+            title={assignmentModeTitle(puzzle.mode)}
+          >
+            <span className="text-slate-500">Rejim:</span>
+            {puzzle.mode === "test" ? (
+              <Dumbbell className="h-4 w-4 text-slate-800" aria-hidden />
+            ) : (
+              <BookOpen className="h-4 w-4 text-slate-800" aria-hidden />
+            )}
+            <span className="sr-only">{assignmentModeTitle(puzzle.mode)}</span>
+            {puzzle.mode === "test" && practiceAttemptsUsed !== null ? (
+              <>
+                {" · "}
+                Urinishlar:{" "}
+                <span className="font-mono text-xs">
+                  {practiceAttemptsUsed}
+                  {practiceLimit !== null ? `/${practiceLimit}` : ""}
+                </span>
+              </>
+            ) : null}
+          </span>
+        </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-3">
@@ -410,7 +438,9 @@ export function PuzzlePage() {
           ref={practiceBoardWrapRef}
           className={`mb-2 origin-center will-change-transform ${
             mode === "practice"
-              ? isPracticeBoardLocked || isPracticeLimitReached
+              ? isPracticeBoardLocked ||
+                  isPracticeLimitReached ||
+                  !isPracticeStudentTurn
                 ? "pointer-events-none select-none"
                 : ""
               : mode === "repeat"

@@ -14,7 +14,13 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, TeacherOnlyGuard)
   async listStudents() {
     const students = await this.usersService.listStudents();
-    return students.map((s) => ({ id: s.id, login: s.login, type: s.type, createdAt: s.createdAt }));
+    return students.map((s) => ({
+      id: s.id,
+      login: s.login,
+      type: s.type,
+      telegramId: s.telegramId ?? null,
+      createdAt: s.createdAt,
+    }));
   }
 
   @Post("students")
@@ -25,9 +31,10 @@ export class UsersController {
       type: "student",
       login: dto.login,
       password: passwordHash,
+      telegramId: dto.telegramId?.trim() || null,
     });
 
-    return { id: student.id, login: student.login, type: student.type };
+    return { id: student.id, login: student.login, type: student.type, telegramId: student.telegramId ?? null };
   }
 
   @Patch("students/:studentId")
@@ -38,8 +45,15 @@ export class UsersController {
       studentId,
       login: dto.login,
       password: passwordHash,
+      telegramId: dto.telegramId,
     });
-    return { id: student.id, login: student.login, type: student.type, createdAt: student.createdAt };
+    return {
+      id: student.id,
+      login: student.login,
+      type: student.type,
+      telegramId: student.telegramId ?? null,
+      createdAt: student.createdAt,
+    };
   }
 
   @Delete("students/:studentId")
@@ -47,6 +61,14 @@ export class UsersController {
   async deleteStudent(@Param("studentId") studentId: string) {
     await this.usersService.deleteStudent(studentId);
     return { ok: true as const };
+  }
+
+  /** Returns `https://t.me/<bot>?start=<token>` for the student to open in Telegram (bot links their account). */
+  @Post("students/:studentId/telegram-link")
+  @UseGuards(JwtAuthGuard, TeacherOnlyGuard)
+  async issueStudentTelegramLink(@Param("studentId") studentId: string) {
+    const { deepLink, expiresAt } = await this.usersService.createStudentTelegramDeepLink(studentId);
+    return { deepLink, expiresAt: expiresAt.toISOString() };
   }
 }
 

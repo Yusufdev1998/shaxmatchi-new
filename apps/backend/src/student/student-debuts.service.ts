@@ -391,6 +391,7 @@ export class StudentDebutsService {
       taskId: puzzle.taskId,
       name: puzzle.name,
       moves: puzzle.moves,
+      studentSide: puzzle.studentSide,
       createdAt: puzzle.createdAt,
       mode: assignment.mode,
       practiceLimit: assignment.practiceLimit ?? null,

@@ -10,6 +10,7 @@ import {
   type PuzzleAssignmentMode,
   type Puzzle,
   type PuzzleMove,
+  type PuzzleStudentSide,
 } from "../api/adminDebutsApi";
 import { adminUsersApi, type Student } from "../api/adminUsersApi";
 import { Plus, Check, X, Pencil, Trash2, ExternalLink, UserPlus, UserMinus } from "lucide-react";
@@ -131,6 +132,7 @@ export function PuzzlesCrudPage() {
   const navigate = useNavigate();
   const params = useParams();
   const [newName, setNewName] = React.useState("");
+  const [studentSide, setStudentSide] = React.useState<PuzzleStudentSide>("white");
   const [newPgn, setNewPgn] = React.useState("");
   const [newMoves, setNewMoves] = React.useState<PuzzleMove[]>([]);
   const [newPgnNormalized, setNewPgnNormalized] = React.useState<string>("");
@@ -319,6 +321,7 @@ export function PuzzlesCrudPage() {
   function resetForm() {
     setEditingPuzzleId(null);
     setNewName("");
+    setStudentSide("white");
     setNewPgn("");
     setNewMoves([]);
     setNewPgnNormalized("");
@@ -331,6 +334,7 @@ export function PuzzlesCrudPage() {
     setError(null);
     setEditingPuzzleId(p.id);
     setNewName(p.name);
+    setStudentSide(p.studentSide === "black" ? "black" : "white");
     const existingMoves = Array.isArray(p.moves) ? p.moves : [];
     const existingPgn = movesToPgnSafe(existingMoves);
     setNewPgn(existingPgn);
@@ -381,7 +385,7 @@ export function PuzzlesCrudPage() {
   }, [newPgn, isEditing]);
 
   const createPuzzleMutation = useMutation({
-    mutationFn: (input: { name: string; moves: PuzzleMove[] }) =>
+    mutationFn: (input: { name: string; moves: PuzzleMove[]; studentSide: PuzzleStudentSide }) =>
       adminDebutsApi.createPuzzle(
         levelIdSafe,
         courseIdSafe,
@@ -403,7 +407,12 @@ export function PuzzlesCrudPage() {
     },
   });
   const updatePuzzleMutation = useMutation({
-    mutationFn: (input: { puzzleId: string; name: string; moves: PuzzleMove[] }) =>
+    mutationFn: (input: {
+      puzzleId: string;
+      name: string;
+      moves: PuzzleMove[];
+      studentSide: PuzzleStudentSide;
+    }) =>
       adminDebutsApi.updatePuzzle(
         levelIdSafe,
         courseIdSafe,
@@ -413,6 +422,7 @@ export function PuzzlesCrudPage() {
         {
           name: input.name,
           moves: input.moves,
+          studentSide: input.studentSide,
         },
       ),
     onSuccess: async () => {
@@ -545,9 +555,10 @@ export function PuzzlesCrudPage() {
           puzzleId: editingPuzzleId,
           name,
           moves: newMoves,
+          studentSide,
         });
       } else {
-        await createPuzzleMutation.mutateAsync({ name, moves: newMoves });
+        await createPuzzleMutation.mutateAsync({ name, moves: newMoves, studentSide });
       }
       resetForm();
     } catch (e) {
@@ -608,6 +619,32 @@ export function PuzzlesCrudPage() {
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Variant nomi"
           />
+          <div className="mt-3">
+            <div className="text-xs font-medium text-slate-700">O'quvchi tomoni (mashq / takrorlash)</div>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={studentSide === "white" ? "default" : "secondary"}
+                disabled={busy}
+                onClick={() => setStudentSide("white")}
+              >
+                Oqlar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={studentSide === "black" ? "default" : "secondary"}
+                disabled={busy}
+                onClick={() => setStudentSide("black")}
+              >
+                Qoralar
+              </Button>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              Boshlang'ich doskada qaysi tomon yurishlarini o'quvchi bajaradi; boshqa tomon avtomatik.
+            </div>
+          </div>
           <textarea
             className={debutsUi.textarea}
             rows={5}
