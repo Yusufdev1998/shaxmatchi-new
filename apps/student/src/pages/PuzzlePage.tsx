@@ -21,6 +21,11 @@ function assignmentModeLabel(mode: "new" | "test"): string {
   return mode === "test" ? "mashq" : "o'rganish";
 }
 
+function normalizeExplanationHtml(html: string): string {
+  // Quill/copy-paste can save words with non-breaking spaces, which prevents wrapping.
+  return html.replace(/(&nbsp;|&#160;|\u00a0)/gi, " ");
+}
+
 export function PuzzlePage() {
   const { id } = useParams();
   const location = useLocation();
@@ -496,7 +501,7 @@ export function PuzzlePage() {
                 <div
                   className="mt-2"
                   dangerouslySetInnerHTML={{
-                    __html: puzzleMoves[moveIdx - 1]?.explanation ?? "",
+                    __html: normalizeExplanationHtml(puzzleMoves[moveIdx - 1]?.explanation ?? ""),
                   }}
                 />
               </>

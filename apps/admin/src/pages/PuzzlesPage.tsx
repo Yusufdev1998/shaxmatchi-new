@@ -20,6 +20,11 @@ function formatMoveNumber(idx: number) {
   return isWhite ? `${moveNo}.` : `${moveNo}...`;
 }
 
+function normalizeExplanationHtml(html: string): string {
+  // Quill/copy-paste can save words with non-breaking spaces, which prevents wrapping.
+  return html.replace(/(&nbsp;|&#160;|\u00a0)/gi, " ");
+}
+
 export function PuzzlePracticePage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -417,7 +422,7 @@ export function PuzzlePracticePage() {
                 <div
                   className="mt-2"
                   dangerouslySetInnerHTML={{
-                    __html: moves[moveIdx - 1]?.explanation ?? "",
+                    __html: normalizeExplanationHtml(moves[moveIdx - 1]?.explanation ?? ""),
                   }}
                 />
               </>
