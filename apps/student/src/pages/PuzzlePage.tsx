@@ -16,7 +16,12 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PieceDropHandlerArgs } from "react-chessboard";
 import { BookOpen, Repeat, Dumbbell, ChevronLeft, ChevronRight, CheckCircle, RotateCcw } from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
-import { playMoveSound } from "../lib/playMoveSound";
+import {
+  playAchievementSound,
+  playFailSound,
+  playGameStartSound,
+  playMoveSound,
+} from "../lib/playSounds";
 
 function assignmentModeTitle(mode: "new" | "test"): string {
   return mode === "test" ? "Mashq" : "O'rganish";
@@ -109,6 +114,7 @@ export function PuzzlePage() {
   }, [id, puzzle, stopAutoplay]);
 
   const startRepeat = React.useCallback(() => {
+    playGameStartSound();
     stopAutoplay();
     setMoveIdx(0);
     setGame(new Chess());
@@ -132,6 +138,7 @@ export function PuzzlePage() {
   const isLocked = mode !== "practice" || isPracticeComplete;
 
   const triggerWrongPracticeFeedback = React.useCallback(() => {
+    playFailSound();
     try {
       if (typeof navigator !== "undefined" && "vibrate" in navigator) {
         navigator.vibrate([35, 45, 35]);
@@ -201,7 +208,12 @@ export function PuzzlePage() {
         return false;
       }
 
-      playMoveSound();
+      const completesLine = moveIdx + 1 >= puzzleMoves.length;
+      if (completesLine) {
+        playAchievementSound();
+      } else {
+        playMoveSound();
+      }
       setGame(next);
       setMoveIdx((i) => i + 1);
       return true;
@@ -232,7 +244,12 @@ export function PuzzlePage() {
         return false;
       }
 
-      playMoveSound();
+      const completesLine = moveIdx + 1 >= puzzleMoves.length;
+      if (completesLine) {
+        playAchievementSound();
+      } else {
+        playMoveSound();
+      }
       setGame(next);
       setMoveIdx((i) => i + 1);
       return true;
@@ -253,7 +270,12 @@ export function PuzzlePage() {
       const next = new Chess(fen);
       const move = next.move(expectedSan);
       if (!move) return;
-      playMoveSound();
+      const completesLine = moveIdx + 1 >= puzzleMoves.length;
+      if (completesLine) {
+        playAchievementSound();
+      } else {
+        playMoveSound();
+      }
       setGame(next);
       setMoveIdx((i) => i + 1);
     }, 450);
@@ -358,7 +380,10 @@ export function PuzzlePage() {
             <div className="mt-4 grid gap-2">
               {isTestAssignment ? (
                 <Button
-                  onClick={() => setMode("practice")}
+                  onClick={() => {
+                    playGameStartSound();
+                    setMode("practice");
+                  }}
                   disabled={isPracticeLimitReached}
                 >
                   <Dumbbell className="mr-2 h-4 w-4" /> Mashq
@@ -367,6 +392,7 @@ export function PuzzlePage() {
                 <>
                   <Button
                     onClick={() => {
+                      playGameStartSound();
                       stopAutoplay();
                       setMode("study");
                       setBoardToMove(0);
