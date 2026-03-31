@@ -1,5 +1,27 @@
 import { Type } from "class-transformer";
-import { IsArray, IsIn, IsOptional, IsString, MinLength, ValidateNested } from "class-validator";
+import {
+  IsArray,
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MinLength,
+  ValidateNested,
+} from "class-validator";
+
+export class PuzzleArrowDto {
+  @IsString()
+  @Matches(/^[a-h][1-8]$/)
+  startSquare!: string;
+
+  @IsString()
+  @Matches(/^[a-h][1-8]$/)
+  endSquare!: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+}
 
 export class PuzzleMoveDto {
   @IsString()
@@ -8,6 +30,19 @@ export class PuzzleMoveDto {
 
   @IsString()
   explanation!: string;
+
+  /** Highlighted squares (ring circles), e.g. `["d5","f5"]`. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  circles?: string[];
+
+  /** Arrows drawn on the board for this move’s explanation. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PuzzleArrowDto)
+  arrows?: PuzzleArrowDto[];
 }
 
 export class PuzzleDto {

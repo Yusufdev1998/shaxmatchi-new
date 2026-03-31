@@ -225,7 +225,12 @@ export class DebutsService {
     taskId: string,
     input: {
       name: string;
-      moves: Array<{ san: string; explanation: string }>;
+      moves: Array<{
+        san: string;
+        explanation: string;
+        circles?: string[];
+        arrows?: Array<{ startSquare: string; endSquare: string; color?: string }>;
+      }>;
       studentSide?: "white" | "black";
     },
   ) {
@@ -246,7 +251,12 @@ export class DebutsService {
     puzzleId: string,
     input: {
       name: string;
-      moves: Array<{ san: string; explanation: string }>;
+      moves: Array<{
+        san: string;
+        explanation: string;
+        circles?: string[];
+        arrows?: Array<{ startSquare: string; endSquare: string; color?: string }>;
+      }>;
       studentSide?: "white" | "black";
     },
   ) {

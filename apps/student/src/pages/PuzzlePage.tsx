@@ -14,7 +14,16 @@ import {
 } from "@shaxmatchi/ui";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PieceDropHandlerArgs } from "react-chessboard";
-import { BookOpen, Repeat, Dumbbell, ChevronLeft, ChevronRight, CheckCircle, RotateCcw } from "lucide-react";
+import {
+  BookOpen,
+  Repeat,
+  Dumbbell,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  RotateCcw,
+  XCircle,
+} from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
 import {
   playAchievementSound,
@@ -63,6 +72,8 @@ export function PuzzlePage() {
   const autoplayRef = React.useRef<number | null>(null);
   const limitRedirectTimerRef = React.useRef<number | null>(null);
   const skipNextModeSelectionRef = React.useRef(false);
+  /** Avoid resetting board/mode when the same variant refetches (e.g. after consume-attempt). */
+  const loadedPuzzleIdRef = React.useRef<string | null>(null);
   const practiceBoardWrapRef = React.useRef<HTMLDivElement>(null);
   const [moveIdx, setMoveIdx] = React.useState(0);
   const [isPracticeResetting, setIsPracticeResetting] = React.useState(false);
@@ -95,21 +106,31 @@ export function PuzzlePage() {
   React.useEffect(() => {
     if (!id) return;
     if (!puzzle) {
+      loadedPuzzleIdRef.current = null;
       setGame(new Chess());
       setMode(null);
       setMoveIdx(0);
       stopAutoplay();
       return;
     }
-    setGame(new Chess());
-    setMoveIdx(0);
-    stopAutoplay();
-    if (skipNextModeSelectionRef.current && puzzle.mode === "test") {
+    if (puzzle.id !== id) return;
+
+    const firstLoadForThisPuzzle = loadedPuzzleIdRef.current !== puzzle.id;
+    if (firstLoadForThisPuzzle) {
+      loadedPuzzleIdRef.current = puzzle.id;
+      setGame(new Chess());
+      setMoveIdx(0);
+      stopAutoplay();
+      if (skipNextModeSelectionRef.current && puzzle.mode === "test") {
+        skipNextModeSelectionRef.current = false;
+        setMode("practice");
+      } else {
+        // Always ask the student to pick the allowed mode when opening a variant.
+        setMode(null);
+      }
+    } else if (skipNextModeSelectionRef.current && puzzle.mode === "test") {
       skipNextModeSelectionRef.current = false;
       setMode("practice");
-    } else {
-      // Always ask the student to pick the allowed mode when opening a variant.
-      setMode(null);
     }
   }, [id, puzzle, stopAutoplay]);
 
@@ -153,6 +174,22 @@ export function PuzzlePage() {
     el.classList.add("animate-board-shake");
   }, []);
 
+  const restartPractice = React.useCallback(() => {
+    playGameStartSound();
+    stopAutoplay();
+    setMoveIdx(0);
+    setGame(new Chess());
+  }, [stopAutoplay]);
+
+  const goBackToVariantsList = React.useCallback(() => {
+    const state = location.state as { returnTo?: string } | null;
+    const returnTo =
+      typeof state?.returnTo === "string" && state.returnTo.length > 0
+        ? state.returnTo
+        : "/debut";
+    navigate(returnTo, { replace: true });
+  }, [location.state, navigate]);
+
   const handlePracticeFailure = React.useCallback(() => {
     triggerWrongPracticeFeedback();
     stopAutoplay();
@@ -176,6 +213,21 @@ export function PuzzlePage() {
         setIsPracticeResetting(false);
       });
   }, [id, puzzleQuery, queryClient, stopAutoplay, triggerWrongPracticeFeedback]);
+
+  /** Each full mashq (success or failure) consumes one urinish; refetch so UI shows updated count. */
+  const handlePracticeLineCompleted = React.useCallback(() => {
+    if (!id) return;
+    if (puzzle?.mode !== "test") return;
+    // Refetch updates `puzzle` and retriggers the effect below; keep mashq open like after a wrong move.
+    skipNextModeSelectionRef.current = true;
+    void studentDebutsApi
+      .consumePracticeAttempt(id)
+      .catch(() => undefined)
+      .then(async () => {
+        await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
+        return puzzleQuery.refetch();
+      });
+  }, [id, puzzle?.mode, puzzleQuery, queryClient]);
 
   const onPracticePieceDrop = React.useCallback(
     ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
@@ -211,6 +263,7 @@ export function PuzzlePage() {
       const completesLine = moveIdx + 1 >= puzzleMoves.length;
       if (completesLine) {
         playAchievementSound();
+        handlePracticeLineCompleted();
       } else {
         playMoveSound();
       }
@@ -218,7 +271,7 @@ export function PuzzlePage() {
       setMoveIdx((i) => i + 1);
       return true;
     },
-    [fen, handlePracticeFailure, isPracticeResetting, moveIdx, puzzle, puzzleMoves],
+    [fen, handlePracticeFailure, handlePracticeLineCompleted, isPracticeResetting, moveIdx, puzzle, puzzleMoves],
   );
 
   const onRepeatPieceDrop = React.useCallback(
@@ -273,13 +326,16 @@ export function PuzzlePage() {
       const completesLine = moveIdx + 1 >= puzzleMoves.length;
       if (completesLine) {
         playAchievementSound();
+        if (mode === "practice") {
+          handlePracticeLineCompleted();
+        }
       } else {
         playMoveSound();
       }
       setGame(next);
       setMoveIdx((i) => i + 1);
     }, 450);
-  }, [puzzle, fen, mode, moveIdx, puzzleMoves, stopAutoplay]);
+  }, [handlePracticeLineCompleted, mode, puzzle, fen, moveIdx, puzzleMoves, stopAutoplay]);
 
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
   React.useEffect(
@@ -310,10 +366,11 @@ export function PuzzlePage() {
   }, [puzzleQuery.error, triggerLimitRedirect]);
 
   React.useEffect(() => {
-    if (mode === "practice" && isPracticeLimitReached) {
+    // Limit reached after a wrong move: redirect. After a successful finish, stay on the completion dialog.
+    if (mode === "practice" && isPracticeLimitReached && !isPracticeComplete) {
       triggerLimitRedirect();
     }
-  }, [isPracticeLimitReached, mode, triggerLimitRedirect]);
+  }, [isPracticeComplete, isPracticeLimitReached, mode, triggerLimitRedirect]);
 
   if (!id) {
     return <div className="text-sm text-slate-600">Variant id topilmadi</div>;
@@ -347,6 +404,9 @@ export function PuzzlePage() {
     mode === "practice" && moveIdx < puzzleMoves.length && isStudentMoveAtIndex(studentSide, moveIdx);
   const isPracticeBoardLocked = isLocked || isPracticeResetting;
 
+  const studyBoardShapes =
+    mode === "study" && moveIdx > 0 ? puzzleMoves[moveIdx - 1] : null;
+
   return (
     <div className="space-y-3">
       {isLimitRedirecting ? (
@@ -359,14 +419,44 @@ export function PuzzlePage() {
       ) : null}
 
       {mode === "practice" && isPracticeResetting ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-sm rounded-xl border border-white/25 bg-slate-900/90 p-5 text-center text-white shadow-2xl">
-            <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-2 border-white/35 border-t-white" />
-            <div className="text-base font-semibold">Xato urinish</div>
-            <div className="mt-1 text-sm text-slate-200">
-              Mashq boshidan boshlanadi.
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4">
+          <div
+            role="alert"
+            className="w-full max-w-sm rounded-2xl border border-rose-200/90 bg-gradient-to-b from-white to-rose-50/90 p-6 text-center shadow-2xl ring-1 ring-rose-500/10"
+          >
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 shadow-inner">
+              <XCircle className="h-8 w-8" strokeWidth={2} aria-hidden />
             </div>
-            <div className="mt-3 text-xs text-slate-300">Yangilanmoqda...</div>
+            <div className="text-base font-semibold text-slate-900">Xato urinish</div>
+            <div className="mt-1.5 text-sm text-slate-600">Mashq boshidan boshlanadi.</div>
+            <div className="mt-4 text-xs text-slate-500">Yangilanmoqda...</div>
+          </div>
+        </div>
+      ) : null}
+
+      {mode === "practice" && isPracticeComplete && !isPracticeResetting ? (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="practice-complete-title"
+            className="w-full max-w-md rounded-2xl border border-emerald-200/90 bg-gradient-to-b from-white to-emerald-50/95 p-6 shadow-2xl ring-1 ring-emerald-500/15"
+          >
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
+              <CheckCircle className="h-9 w-9" strokeWidth={2} aria-hidden />
+            </div>
+            <h2 id="practice-complete-title" className="text-center text-xl font-bold tracking-tight text-slate-900">
+              Mashq muvaffaqiyatli yakunlandi
+            </h2>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button type="button" className="w-full sm:flex-1" onClick={restartPractice}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Qayta mashq qilish
+              </Button>
+              <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={goBackToVariantsList}>
+                Variantlar sahifasiga
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -481,6 +571,8 @@ export function PuzzlePage() {
           }}
         >
           <BaseChessboard
+            circles={studyBoardShapes?.circles}
+            arrows={studyBoardShapes?.arrows}
             options={{
               position: fen,
               onPieceDrop: mode === "practice" ? onPracticePieceDrop : mode === "repeat" ? onRepeatPieceDrop : undefined,

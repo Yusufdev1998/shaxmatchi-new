@@ -111,6 +111,9 @@ export function PuzzlePracticePage() {
     ? (puzzle!.moves as PuzzleMove[])
     : [];
 
+  const studyBoardShapes =
+    mode === "study" && moveIdx > 0 ? moves[moveIdx - 1] : null;
+
   const stopAutoplay = React.useCallback(() => {
     if (autoplayRef.current) {
       window.clearInterval(autoplayRef.current);
@@ -344,6 +347,8 @@ export function PuzzlePracticePage() {
           }}
         >
           <BaseChessboard
+            circles={studyBoardShapes?.circles}
+            arrows={studyBoardShapes?.arrows}
             options={{
               position: fen,
               onPieceDrop:

@@ -41,7 +41,13 @@ export type StudentPuzzleSummary = {
   assignment: StudentPuzzleAssignment | null;
 };
 
-export type PuzzleMove = { san: string; explanation: string };
+export type PuzzleBoardArrow = { startSquare: string; endSquare: string; color?: string };
+export type PuzzleMove = {
+  san: string;
+  explanation: string;
+  circles?: string[];
+  arrows?: PuzzleBoardArrow[];
+};
 export type PuzzleStudentSide = "white" | "black";
 export type StudentPuzzleDetail = {
   id: string;

@@ -9,6 +9,7 @@ import {
   adminDebutsApi,
   type PuzzleAssignmentMode,
   type Puzzle,
+  type PuzzleBoardArrow,
   type PuzzleMove,
   type PuzzleStudentSide,
 } from "../api/adminDebutsApi";
@@ -17,6 +18,7 @@ import { Plus, Check, X, Pencil, Trash2, ExternalLink, UserPlus, UserMinus } fro
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { debutsUi } from "../components/debuts/debutsUi";
 import { DebutsPageHeader } from "../components/debuts/DebutsPageHeader";
+import { ExplanationShapesEditor } from "../components/debuts/ExplanationShapesEditor";
 import { InlineSpinner, LoadingCard } from "../components/loading";
 
 const quillModules = {
@@ -111,6 +113,27 @@ function parsePgnToMoves(pgnText: string): {
   };
 }
 
+function fenForExplanationPreview(moves: PuzzleMove[], moveIndex: number): string {
+  try {
+    const g = new Chess();
+    for (let i = 0; i <= moveIndex && i < moves.length; i++) {
+      const ok = g.move(moves[i].san);
+      if (!ok) return new Chess().fen();
+    }
+    return g.fen();
+  } catch {
+    return new Chess().fen();
+  }
+}
+
+function moveHasExplanationContent(m: PuzzleMove): boolean {
+  return (
+    m.explanation.trim().length > 0 ||
+    (m.circles?.length ?? 0) > 0 ||
+    (m.arrows?.length ?? 0) > 0
+  );
+}
+
 function movesToPgnSafe(moves: PuzzleMove[]): string {
   if (moves.length === 0) return "";
   try {
@@ -141,6 +164,10 @@ export function PuzzlesCrudPage() {
     null,
   );
   const [newMoveDialogValue, setNewMoveDialogValue] = React.useState("");
+  const [newMoveDialogShapes, setNewMoveDialogShapes] = React.useState<{
+    circles: string[];
+    arrows: PuzzleBoardArrow[];
+  }>({ circles: [], arrows: [] });
   const [editingPuzzleId, setEditingPuzzleId] = React.useState<string | null>(
     null,
   );
@@ -328,6 +355,7 @@ export function PuzzlesCrudPage() {
     setPgnError(null);
     setNewMoveDialogIdx(null);
     setNewMoveDialogValue("");
+    setNewMoveDialogShapes({ circles: [], arrows: [] });
   }
 
   function startEdit(p: Puzzle) {
@@ -343,6 +371,7 @@ export function PuzzlesCrudPage() {
     setPgnError(null);
     setNewMoveDialogIdx(null);
     setNewMoveDialogValue("");
+    setNewMoveDialogShapes({ circles: [], arrows: [] });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -350,7 +379,12 @@ export function PuzzlesCrudPage() {
     return next.map((m, idx) => {
       const prevAt = prev[idx];
       if (prevAt && prevAt.san === m.san)
-        return { ...m, explanation: prevAt.explanation };
+        return {
+          ...m,
+          explanation: prevAt.explanation,
+          circles: prevAt.circles,
+          arrows: prevAt.arrows,
+        };
       return m;
     });
   }
@@ -682,7 +716,7 @@ export function PuzzlesCrudPage() {
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <div className="text-xs text-slate-500">
-                  {newMoves.filter((m) => m.explanation.trim().length > 0).length}/{newMoves.length} tushuntirilgan
+                  {newMoves.filter((m) => moveHasExplanationContent(m)).length}/{newMoves.length} tushuntirilgan
                 </div>
               </div>
               <div className="mt-2 space-y-1.5">
@@ -696,7 +730,7 @@ export function PuzzlesCrudPage() {
                         {formatMoveNumber(idx)} {m.san}
                       </div>
                       <div className="mt-0.5 text-xs text-slate-500">
-                        {m.explanation.trim().length > 0 ? "tushuntirilgan" : "tushuntirish yo'q"}
+                        {moveHasExplanationContent(m) ? "tushuntirilgan" : "tushuntirish yo'q"}
                       </div>
                     </div>
                     <Button
@@ -704,15 +738,19 @@ export function PuzzlesCrudPage() {
                       size="sm"
                       variant="secondary"
                       disabled={busy}
-                      title={m.explanation.trim().length > 0 ? "Tushuntirishni tahrirlash" : "Tushuntirish qo'shish"}
+                      title={moveHasExplanationContent(m) ? "Tushuntirishni tahrirlash" : "Tushuntirish qo'shish"}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         setNewMoveDialogIdx(idx);
                         setNewMoveDialogValue(m.explanation);
+                        setNewMoveDialogShapes({
+                          circles: m.circles ?? [],
+                          arrows: m.arrows ?? [],
+                        });
                       }}
                     >
-                      {m.explanation.trim().length > 0 ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                      {moveHasExplanationContent(m) ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                     </Button>
                   </div>
                 ))}
@@ -731,7 +769,7 @@ export function PuzzlesCrudPage() {
             className="absolute inset-0 bg-black/40"
             onClick={() => setNewMoveDialogIdx(null)}
           />
-          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="absolute left-1/2 top-1/2 max-h-[90vh] w-[92vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold">Yurish tushuntirishi</div>
@@ -758,6 +796,12 @@ export function PuzzlesCrudPage() {
                 formats={quillFormats}
               />
             </div>
+            <ExplanationShapesEditor
+              fen={fenForExplanationPreview(newMoves, newMoveDialogIdx!)}
+              circles={newMoveDialogShapes.circles}
+              arrows={newMoveDialogShapes.arrows}
+              onChange={setNewMoveDialogShapes}
+            />
             <div className="mt-3 flex gap-2">
               <Button
                 type="button"
@@ -767,7 +811,19 @@ export function PuzzlesCrudPage() {
                   const idx = newMoveDialogIdx;
                   if (idx === null) return;
                   const value = newMoveDialogValue;
-                  setNewMoves((prev) => prev.map((x, i) => (i === idx ? { ...x, explanation: value } : x)));
+                  const { circles: c, arrows: a } = newMoveDialogShapes;
+                  setNewMoves((prev) =>
+                    prev.map((x, i) =>
+                      i === idx
+                        ? {
+                            ...x,
+                            explanation: value,
+                            circles: c.length > 0 ? c : undefined,
+                            arrows: a.length > 0 ? a : undefined,
+                          }
+                        : x,
+                    ),
+                  );
                   setNewMoveDialogIdx(null);
                 }}
               >

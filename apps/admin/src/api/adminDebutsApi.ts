@@ -32,7 +32,14 @@ export type Level = { id: string; name: string; createdAt: string };
 export type Course = { id: string; debutLevelId: string; name: string; createdAt: string };
 export type Module = { id: string; courseId: string; name: string; createdAt: string };
 export type Task = { id: string; moduleId: string; name: string; createdAt: string };
-export type PuzzleMove = { san: string; explanation: string };
+/** Board overlay for a move’s explanation (stored with the move in JSON). */
+export type PuzzleBoardArrow = { startSquare: string; endSquare: string; color?: string };
+export type PuzzleMove = {
+  san: string;
+  explanation: string;
+  circles?: string[];
+  arrows?: PuzzleBoardArrow[];
+};
 export type PuzzleStudentSide = "white" | "black";
 export type Puzzle = {
   id: string;

@@ -2,10 +2,27 @@ import * as React from "react";
 import {
   Chessboard,
   ChessboardOptions,
+  defaultArrowOptions,
+  type Arrow,
   type SquareHandlerArgs,
   type PieceDropHandlerArgs,
 } from "react-chessboard";
 import { Chess, type Square } from "chess.js";
+
+/** Default arrow styling for this board (user `options.arrowOptions` merges on top). */
+export const baseChessboardArrowOptions = {
+  ...defaultArrowOptions,
+  color: "#9a493b",
+  secondaryColor: "#9a493b",
+  tertiaryColor: "#9a493b",
+};
+
+/** Arrows for `BaseChessboard`; `color` defaults to {@link baseChessboardArrowOptions}.color. */
+export type BaseChessboardArrow = {
+  startSquare: string;
+  endSquare: string;
+  color?: string;
+};
 
 export type BaseChessboardProps = React.ComponentProps<typeof Chessboard>;
 
@@ -33,6 +50,18 @@ export type BaseChessboardWithClickMoveProps = BaseChessboardProps & {
    * Works independently of drag-to-move.
    */
   clickToMove?: ChessboardClickToMoveConfig;
+  /**
+   * Optional static circles rendered on given squares (e.g. ["f4", "e3"]).
+   */
+  circles?: string[];
+  /**
+   * Optional arrows (e.g. e2→e4). Merged after `options.arrows` if both are set.
+   */
+  arrows?: BaseChessboardArrow[];
+  /**
+   * When set, every square click is delivered here and click-to-move is disabled (for shape editors).
+   */
+  pickSquare?: (square: string) => void;
 };
 
 export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
@@ -42,7 +71,36 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
   >({});
 
   const clickToMove = props.clickToMove;
+  const circles = props.circles ?? [];
+  const arrowsFromProp = props.arrows ?? [];
   const position = props.options?.position;
+
+  const normalizedPropArrows = React.useMemo<Arrow[]>(
+    () =>
+      arrowsFromProp.map((a) => ({
+        startSquare: a.startSquare,
+        endSquare: a.endSquare,
+        color: a.color ?? baseChessboardArrowOptions.color,
+      })),
+    [arrowsFromProp]
+  );
+
+  const mergedArrows = React.useMemo<Arrow[] | undefined>(() => {
+    const fromOptions = props.options?.arrows ?? [];
+    const merged = [...fromOptions, ...normalizedPropArrows];
+    return merged.length > 0 ? merged : undefined;
+  }, [props.options?.arrows, normalizedPropArrows]);
+  const circleSquares = React.useMemo<Record<string, React.CSSProperties>>(
+    () =>
+      circles.reduce<Record<string, React.CSSProperties>>((acc, square) => {
+        acc[square] = {
+          boxShadow: "inset 0 0 0 3px rgba(57, 136, 65, 0.95)",
+          borderRadius: "50%",
+        };
+        return acc;
+      }, {}),
+    [circles]
+  );
 
   const chessForMoves = React.useMemo(() => {
     if (typeof position !== "string") return null;
@@ -154,6 +212,11 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
 
   const onSquareClick = React.useCallback(
     (args: SquareHandlerArgs) => {
+      if (props.pickSquare) {
+        props.pickSquare(args.square as string);
+        return;
+      }
+
       // Preserve user's onSquareClick if provided
       props.options?.onSquareClick?.(args);
 
@@ -215,6 +278,7 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
       getMoveOptions,
       moveFrom,
       props.options,
+      props.pickSquare,
       tryMove,
     ]
   );
@@ -234,7 +298,13 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
     },
     ...props.options,
     onSquareClick,
+    arrowOptions: {
+      ...baseChessboardArrowOptions,
+      ...props.options?.arrowOptions,
+    },
+    ...(mergedArrows !== undefined ? { arrows: mergedArrows } : {}),
     squareStyles: {
+      ...circleSquares,
       ...(props.options?.squareStyles ?? {}),
       ...optionSquares,
     },
@@ -248,7 +318,15 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
 
   // Do not forward clickToMove to Chessboard
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { clickToMove: _clickToMove, ...rest } = props;
+  const {
+    clickToMove: _clickToMove,
+    circles: _circles,
+    arrows: _arrows,
+    pickSquare: _pickSquare,
+    ...rest
+  } = props;
 
   return <Chessboard {...rest} options={options} />;
 }
+
+export type { Arrow } from "react-chessboard";
