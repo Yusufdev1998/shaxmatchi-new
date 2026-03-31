@@ -190,7 +190,7 @@ export function PuzzlePage() {
     navigate(returnTo, { replace: true });
   }, [location.state, navigate]);
 
-  const handlePracticeFailure = React.useCallback(() => {
+  const handlePracticeFailure = React.useCallback((failureMoveIndex: number) => {
     triggerWrongPracticeFeedback();
     stopAutoplay();
     setGame(new Chess());
@@ -203,7 +203,7 @@ export function PuzzlePage() {
       return;
     }
     void studentDebutsApi
-      .consumePracticeAttempt(id)
+      .consumePracticeAttempt(id, { outcome: "failure", failureMoveIndex })
       .catch(() => undefined)
       .then(async () => {
         await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
@@ -221,7 +221,7 @@ export function PuzzlePage() {
     // Refetch updates `puzzle` and retriggers the effect below; keep mashq open like after a wrong move.
     skipNextModeSelectionRef.current = true;
     void studentDebutsApi
-      .consumePracticeAttempt(id)
+      .consumePracticeAttempt(id, { outcome: "success" })
       .catch(() => undefined)
       .then(async () => {
         await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
@@ -250,13 +250,13 @@ export function PuzzlePage() {
       const next = new Chess(fen);
       const move = next.move({ from, to, promotion: "q" });
       if (!move) {
-        handlePracticeFailure();
+        handlePracticeFailure(moveIdx);
         return false;
       }
 
       const expectedSan = puzzleMoves[moveIdx]?.san;
       if (!expectedSan || move.san !== expectedSan) {
-        handlePracticeFailure();
+        handlePracticeFailure(moveIdx);
         return false;
       }
 
@@ -371,6 +371,44 @@ export function PuzzlePage() {
       triggerLimitRedirect();
     }
   }, [isPracticeComplete, isPracticeLimitReached, mode, triggerLimitRedirect]);
+
+  const learningFlushRef = React.useRef<number>(Date.now());
+
+  React.useEffect(() => {
+    if (!id || puzzle?.mode !== "new") return;
+    if (mode !== "study" && mode !== "repeat") return;
+
+    learningFlushRef.current = Date.now();
+
+    const flush = (opts: { force?: boolean }) => {
+      const force = opts.force ?? false;
+      if (!force && document.visibilityState !== "visible") return;
+      const now = Date.now();
+      const raw = Math.floor((now - learningFlushRef.current) / 1000);
+      const delta = Math.min(120, Math.max(0, raw));
+      if (delta < 1) return;
+      learningFlushRef.current = now;
+      void studentDebutsApi.addLearningSeconds(id, { deltaSeconds: delta }).catch(() => undefined);
+    };
+
+    const intervalId = window.setInterval(() => flush({}), 15000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        flush({ force: true });
+      } else {
+        learningFlushRef.current = Date.now();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush({ force: true });
+    };
+  }, [id, puzzle?.mode, mode]);
 
   if (!id) {
     return <div className="text-sm text-slate-600">Variant id topilmadi</div>;
@@ -581,21 +619,38 @@ export function PuzzlePage() {
         </div>
 
         {mode === "study" ? (
-          <div className="mt-5 flex items-center justify-between gap-3 px-1">
-            <Button size="sm" variant="secondary" onClick={() => setBoardToMove(moveIdx - 1)} disabled={moveIdx <= 0}>
-              <ChevronLeft className="h-4 w-4" />
+          <div className="mt-5 flex items-center justify-between gap-1.5  px-0.5 pt-2 sm:mt-6 sm:gap-2 sm:pt-5">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-7 shrink-0 gap-0 rounded-md px-1.5 text-xs font-medium leading-none sm:px-2"
+              onClick={() => setBoardToMove(moveIdx - 1)}
+              disabled={moveIdx <= 0}
+            >
+              <ChevronLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="-ml-0.5">oldingi</span>
             </Button>
-            <div className="text-xs text-slate-500">
+            <div className="min-w-0 flex-1 text-center text-[11px] text-slate-500 sm:text-xs">
               Qadam <span className="font-mono">{moveIdx}</span>/
               <span className="font-mono">{puzzleMoves.length}</span>
             </div>
             {moveIdx >= puzzleMoves.length ? (
-              <Button size="sm" onClick={() => setMode(null)}>
-                <CheckCircle className="mr-1 h-4 w-4" /> Tugatish
+              <Button
+                size="sm"
+                className="h-7 shrink-0 gap-1 rounded-md px-2 text-xs font-medium leading-none"
+                onClick={() => setMode(null)}
+              >
+                <CheckCircle className="h-3.5 w-3.5 shrink-0" aria-hidden /> Tugatish
               </Button>
             ) : (
-              <Button size="sm" onClick={() => setBoardToMove(moveIdx + 1)} disabled={moveIdx >= puzzleMoves.length}>
-                <ChevronRight className="h-4 w-4" />
+              <Button
+                size="sm"
+                className="h-7 shrink-0 gap-0 rounded-md px-1.5 text-xs font-medium leading-none sm:px-2"
+                onClick={() => setBoardToMove(moveIdx + 1)}
+                disabled={moveIdx >= puzzleMoves.length}
+              >
+                <span className="-mr-0.5">keyingi</span>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
               </Button>
             )}
           </div>

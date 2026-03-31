@@ -59,6 +59,12 @@ export type PuzzleAssignment = {
   mode: PuzzleAssignmentMode;
   practiceLimit: number | null;
   practiceAttemptsUsed: number;
+  /** Mashq: muvaffaqiyatli to'liq chiziqlar. */
+  practiceSuccessCount: number;
+  /** Mashq: xato progress foizlari yig‘indisi (ichki). */
+  practiceFailureProgressSum: number;
+  /** Total seconds in o'rganish (study + repeat) for this assignment. */
+  learningSecondsTotal: number;
   assignedAt: string;
   completedAt: string | null;
 };

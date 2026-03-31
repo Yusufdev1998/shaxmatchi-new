@@ -4,8 +4,9 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   ForbiddenException,
+  BadRequestException,
 } from "@nestjs/common";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import {
   courses,
@@ -16,6 +17,13 @@ import {
   tasks,
 } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
+
+/** Xato qilgan paytdagi mashq bo‘yicha progress foizi (0–100), moveIdx va jami yurishlar soni asosida. */
+function mashqFailureProgressPercent(moveIdx: number, totalMoves: number): number {
+  if (totalMoves <= 0) return 0;
+  const clamped = Math.max(0, Math.min(moveIdx, totalMoves - 1));
+  return Math.round((clamped / totalMoves) * 100);
+}
 
 @Injectable()
 export class StudentDebutsService {
@@ -50,6 +58,8 @@ export class StudentDebutsService {
         assignmentMode: puzzleAssignments.mode,
         assignmentPracticeLimit: puzzleAssignments.practiceLimit,
         assignmentPracticeAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+        assignmentPracticeSuccessCount: puzzleAssignments.practiceSuccessCount,
+        assignmentLearningSecondsTotal: puzzleAssignments.learningSecondsTotal,
         assignmentAssignedAt: puzzleAssignments.assignedAt,
         assignmentCompletedAt: puzzleAssignments.completedAt,
       })
@@ -77,6 +87,8 @@ export class StudentDebutsService {
         mode: "new" | "test";
         practiceLimit: number | null;
         practiceAttemptsUsed: number;
+        practiceSuccessCount: number;
+        learningSecondsTotal: number;
         assignedAt: Date;
         completedAt: Date | null;
       };
@@ -150,6 +162,8 @@ export class StudentDebutsService {
           mode: r.assignmentMode,
           practiceLimit: r.assignmentPracticeLimit,
           practiceAttemptsUsed: r.assignmentPracticeAttemptsUsed ?? 0,
+          practiceSuccessCount: r.assignmentPracticeSuccessCount ?? 0,
+          learningSecondsTotal: r.assignmentLearningSecondsTotal ?? 0,
           assignedAt: r.assignmentAssignedAt,
           completedAt: r.assignmentCompletedAt ?? null,
         },
@@ -326,6 +340,8 @@ export class StudentDebutsService {
         mode: puzzleAssignments.mode,
         practiceLimit: puzzleAssignments.practiceLimit,
         practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+        practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
+        learningSecondsTotal: puzzleAssignments.learningSecondsTotal,
         assignedAt: puzzleAssignments.assignedAt,
         completedAt: puzzleAssignments.completedAt,
       })
@@ -351,6 +367,8 @@ export class StudentDebutsService {
         mode: r.mode!,
         practiceLimit: r.practiceLimit ?? null,
         practiceAttemptsUsed: r.practiceAttemptsUsed ?? 0,
+        practiceSuccessCount: r.practiceSuccessCount ?? 0,
+        learningSecondsTotal: r.learningSecondsTotal ?? 0,
         assignedAt: r.assignedAt!,
         completedAt: r.completedAt ?? null,
       },
@@ -366,6 +384,8 @@ export class StudentDebutsService {
         mode: puzzleAssignments.mode,
         practiceLimit: puzzleAssignments.practiceLimit,
         practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+        practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
+        learningSecondsTotal: puzzleAssignments.learningSecondsTotal,
       })
       .from(puzzleAssignments)
       .where(and(eq(puzzleAssignments.puzzleId, input.puzzleId), eq(puzzleAssignments.studentId, input.studentId)))
@@ -396,10 +416,54 @@ export class StudentDebutsService {
       mode: assignment.mode,
       practiceLimit: assignment.practiceLimit ?? null,
       practiceAttemptsUsed: assignment.practiceAttemptsUsed ?? 0,
+      practiceSuccessCount: assignment.practiceSuccessCount ?? 0,
+      learningSecondsTotal: assignment.learningSecondsTotal ?? 0,
     };
   }
 
-  async consumePracticeAttemptForStudent(input: { puzzleId: string; studentId: string }) {
+  async addLearningSecondsForStudent(input: { puzzleId: string; studentId: string; deltaSeconds: number }) {
+    const db = this.getDb();
+    const delta = Math.floor(input.deltaSeconds);
+    if (!Number.isFinite(delta) || delta < 1 || delta > 120) {
+      throw new BadRequestException("deltaSeconds must be between 1 and 120");
+    }
+
+    const rows = await db
+      .select({
+        assignmentId: puzzleAssignments.id,
+        mode: puzzleAssignments.mode,
+      })
+      .from(puzzleAssignments)
+      .where(
+        and(
+          eq(puzzleAssignments.puzzleId, input.puzzleId),
+          eq(puzzleAssignments.studentId, input.studentId),
+        ),
+      )
+      .limit(1);
+    const assignment = rows[0];
+    if (!assignment) throw new ForbiddenException("Variant is locked");
+    if (assignment.mode !== "new") {
+      throw new BadRequestException("O'rganish vaqti faqat o'rganish rejimida hisoblanadi");
+    }
+
+    const updated = await db
+      .update(puzzleAssignments)
+      .set({
+        learningSecondsTotal: sql`${puzzleAssignments.learningSecondsTotal} + ${delta}`,
+      })
+      .where(eq(puzzleAssignments.id, assignment.assignmentId))
+      .returning({ learningSecondsTotal: puzzleAssignments.learningSecondsTotal });
+    const row = updated[0];
+    return { learningSecondsTotal: row?.learningSecondsTotal ?? delta };
+  }
+
+  async consumePracticeAttemptForStudent(input: {
+    puzzleId: string;
+    studentId: string;
+    outcome: "success" | "failure";
+    failureMoveIndex?: number;
+  }) {
     const db = this.getDb();
     const rows = await db
       .select({
@@ -425,19 +489,56 @@ export class StudentDebutsService {
       throw new ForbiddenException("Mashq urinishlar limiti tugagan");
     }
 
-    const updated = await db
-      .update(puzzleAssignments)
-      .set({ practiceAttemptsUsed: used + 1 })
-      .where(eq(puzzleAssignments.id, assignment.assignmentId))
-      .returning({
-        practiceLimit: puzzleAssignments.practiceLimit,
-        practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
-      });
+    let failureProgressDelta = 0;
+    if (input.outcome === "failure") {
+      if (typeof input.failureMoveIndex !== "number" || !Number.isInteger(input.failureMoveIndex)) {
+        throw new BadRequestException("Xato urinish uchun failureMoveIndex kerak");
+      }
+      const puzzleRows = await db
+        .select({ moves: puzzles.moves })
+        .from(puzzles)
+        .where(eq(puzzles.id, input.puzzleId))
+        .limit(1);
+      const rawMoves = puzzleRows[0]?.moves;
+      const totalMoves = Array.isArray(rawMoves) ? rawMoves.length : 0;
+      if (totalMoves > 0 && input.failureMoveIndex >= totalMoves) {
+        throw new BadRequestException("failureMoveIndex noto‘g‘ri");
+      }
+      failureProgressDelta = mashqFailureProgressPercent(input.failureMoveIndex, totalMoves);
+    }
+
+    const updated =
+      input.outcome === "success"
+        ? await db
+            .update(puzzleAssignments)
+            .set({
+              practiceAttemptsUsed: used + 1,
+              practiceSuccessCount: sql`${puzzleAssignments.practiceSuccessCount} + 1`,
+            })
+            .where(eq(puzzleAssignments.id, assignment.assignmentId))
+            .returning({
+              practiceLimit: puzzleAssignments.practiceLimit,
+              practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+              practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
+            })
+        : await db
+            .update(puzzleAssignments)
+            .set({
+              practiceAttemptsUsed: used + 1,
+              practiceFailureProgressSum: sql`${puzzleAssignments.practiceFailureProgressSum} + ${failureProgressDelta}`,
+            })
+            .where(eq(puzzleAssignments.id, assignment.assignmentId))
+            .returning({
+              practiceLimit: puzzleAssignments.practiceLimit,
+              practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+              practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
+            });
     const next = updated[0];
     return {
       ok: true as const,
       practiceLimit: next?.practiceLimit ?? assignment.practiceLimit ?? null,
       practiceAttemptsUsed: next?.practiceAttemptsUsed ?? used + 1,
+      practiceSuccessCount: next?.practiceSuccessCount ?? 0,
     };
   }
 }

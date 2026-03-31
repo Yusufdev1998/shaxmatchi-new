@@ -20,6 +20,7 @@ import { debutsUi } from "../components/debuts/debutsUi";
 import { DebutsPageHeader } from "../components/debuts/DebutsPageHeader";
 import { ExplanationShapesEditor } from "../components/debuts/ExplanationShapesEditor";
 import { InlineSpinner, LoadingCard } from "../components/loading";
+import { formatLearningDuration } from "../lib/formatLearningDuration";
 
 const quillModules = {
   toolbar: [
@@ -281,6 +282,9 @@ export function PuzzlesCrudPage() {
         mode: PuzzleAssignmentMode;
         practiceLimit: number | null;
         practiceAttemptsUsed: number;
+        practiceSuccessCount: number;
+        practiceFailureProgressSum: number;
+        learningSecondsTotal: number;
         assignedAt: string;
         completedAt: string | null;
       }
@@ -955,12 +959,15 @@ export function PuzzlesCrudPage() {
                         const practiceLeft = hasPracticeCounter
                           ? Math.max(0, (a?.practiceLimit ?? 0) - (a?.practiceAttemptsUsed ?? 0))
                           : null;
+                        const learnSec = a?.mode === "new" ? (a.learningSecondsTotal ?? 0) : null;
                         const status = a
                           ? a.completedAt
                             ? `bajarildi (${assignmentModeLabel(a.mode)})`
                             : a.mode === "test" && hasPracticeCounter
                               ? `tayinlandi (${assignmentModeLabel(a.mode)} qoldi: ${practiceLeft})`
-                              : `tayinlandi (${assignmentModeLabel(a.mode)})`
+                              : learnSec !== null && learnSec > 0
+                                ? `tayinlandi (${assignmentModeLabel(a.mode)} · ${formatLearningDuration(learnSec)})`
+                                : `tayinlandi (${assignmentModeLabel(a.mode)})`
                           : "tayinlanmagan";
                         return (
                           <option key={s.id} value={s.id}>
@@ -1083,6 +1090,9 @@ export function PuzzlesCrudPage() {
                                   typeof a.practiceLimit === "number" &&
                                   typeof a.practiceAttemptsUsed === "number"
                                     ? ` · qoldi: ${Math.max(0, a.practiceLimit - a.practiceAttemptsUsed)}`
+                                    : ""}
+                                  {a.mode === "new" && (a.learningSecondsTotal ?? 0) > 0
+                                    ? ` · o'rganish: ${formatLearningDuration(a.learningSecondsTotal ?? 0)}`
                                     : ""}
                                 </span>
                               ) : (

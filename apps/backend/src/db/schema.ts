@@ -135,6 +135,12 @@ export const puzzleAssignments = pgTable(
     mode: puzzleAssignmentMode("mode").notNull().default("new"),
     practiceLimit: integer("practice_limit"),
     practiceAttemptsUsed: integer("practice_attempts_used").notNull().default(0),
+    /** Mashq: to'liq chiziqni muvaffaqiyatli yakunlagan urinishlar soni. */
+    practiceSuccessCount: integer("practice_success_count").notNull().default(0),
+    /** Mashq: har xato urinishda xato paytidagi progress foizi (0–100) yig‘indisi; o‘rtacha = sum / xato soni. */
+    practiceFailureProgressSum: integer("practice_failure_progress_sum").notNull().default(0),
+    /** Cumulative seconds in o'rganish (study + repeat) for this assignment; mode `new` only. */
+    learningSecondsTotal: integer("learning_seconds_total").notNull().default(0),
     assignedAt: timestamp("assigned_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

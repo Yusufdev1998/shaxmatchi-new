@@ -28,6 +28,10 @@ export type StudentPuzzleAssignment = {
   mode: AssignmentMode;
   practiceLimit: number | null;
   practiceAttemptsUsed: number;
+  /** Mashq: muvaffaqiyatli to'liq chiziqlar soni. */
+  practiceSuccessCount: number;
+  /** Total seconds spent in o'rganish (study + repeat), assignment mode `new` only. */
+  learningSecondsTotal: number;
   assignedAt: string;
   completedAt: string | null;
 };
@@ -59,13 +63,18 @@ export type StudentPuzzleDetail = {
   mode: AssignmentMode;
   practiceLimit: number | null;
   practiceAttemptsUsed: number;
+  practiceSuccessCount: number;
+  learningSecondsTotal: number;
 };
 
 export type ConsumePracticeAttemptResult = {
   ok: true;
   practiceLimit: number | null;
   practiceAttemptsUsed: number;
+  practiceSuccessCount: number;
 };
+
+export type AddLearningSecondsResult = { learningSecondsTotal: number };
 
 export type StudentHierarchyPuzzle = {
   id: string;
@@ -190,9 +199,19 @@ export const studentDebutsApi = {
       `/student/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles`,
     ),
   getPuzzle: (puzzleId: string) => api<StudentPuzzleDetail>(`/student/puzzles/${puzzleId}`),
-  consumePracticeAttempt: (puzzleId: string) =>
+  consumePracticeAttempt: (
+    puzzleId: string,
+    input: { outcome: "success" | "failure"; failureMoveIndex?: number },
+  ) =>
     api<ConsumePracticeAttemptResult>(`/student/puzzles/${puzzleId}/consume-attempt`, {
       method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  addLearningSeconds: (puzzleId: string, input: { deltaSeconds: number }) =>
+    api<AddLearningSecondsResult>(`/student/puzzles/${puzzleId}/learning-seconds`, {
+      method: "POST",
+      body: JSON.stringify(input),
     }),
 };
 

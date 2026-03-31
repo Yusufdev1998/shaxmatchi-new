@@ -11,6 +11,10 @@ import { PuzzlePracticePage } from "./pages/PuzzlesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { UsersPage } from "./pages/UsersPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { StatisticsLayout } from "./layouts/StatisticsLayout";
+import { StatisticsIndexPage } from "./pages/stats/StatisticsIndexPage";
+import { LearningTimeStatsPage } from "./pages/stats/LearningTimeStatsPage";
+import { PracticeStatsPage } from "./pages/stats/PracticeStatsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 export const router = createBrowserRouter([
@@ -32,6 +36,15 @@ export const router = createBrowserRouter([
       { path: "debuts/levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles", element: <PuzzlesCrudPage /> },
       { path: "debuts/levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles/:puzzleId/practice", element: <PuzzlePracticePage /> },
       { path: "users", element: <UsersPage /> },
+      {
+        path: "stats",
+        element: <StatisticsLayout />,
+        children: [
+          { index: true, element: <StatisticsIndexPage /> },
+          { path: "learning-time", element: <LearningTimeStatsPage /> },
+          { path: "practice", element: <PracticeStatsPage /> },
+        ],
+      },
       { path: "settings", element: <SettingsPage /> }
     ]
   }

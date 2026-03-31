@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Swords, Users, Settings } from "lucide-react";
+import { Swords, Users, Settings, BarChart3 } from "lucide-react";
 import { Button } from "@shaxmatchi/ui";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 
@@ -20,6 +20,9 @@ export function DashboardPage() {
         </Button>
         <Button size="sm" className="w-full sm:w-auto" variant="secondary" onClick={() => navigate("/users")}>
           <Users className="mr-1 h-4 w-4" /> O'quvchilar
+        </Button>
+        <Button size="sm" className="w-full sm:w-auto" variant="secondary" onClick={() => navigate("/stats")}>
+          <BarChart3 className="mr-1 h-4 w-4" /> Statistika
         </Button>
         <Button size="sm" className="w-full sm:w-auto" variant="secondary" onClick={() => navigate("/settings")}>
           <Settings className="mr-1 h-4 w-4" /> Sozlamalar

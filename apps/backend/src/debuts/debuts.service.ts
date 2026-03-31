@@ -323,6 +323,9 @@ export class DebutsService {
           mode: input.mode,
           practiceLimit: input.mode === "test" ? input.practiceLimit : null,
           practiceAttemptsUsed: 0,
+          practiceSuccessCount: 0,
+          practiceFailureProgressSum: 0,
+          learningSecondsTotal: 0,
           assignedAt: new Date(),
           completedAt: null,
         })
@@ -340,6 +343,8 @@ export class DebutsService {
         mode: input.mode,
         practiceLimit: input.mode === "test" ? input.practiceLimit : null,
         practiceAttemptsUsed: 0,
+        practiceSuccessCount: 0,
+        practiceFailureProgressSum: 0,
       })
       .returning();
     return rows[0]!;
@@ -365,6 +370,9 @@ export class DebutsService {
         mode: puzzleAssignments.mode,
         practiceLimit: puzzleAssignments.practiceLimit,
         practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
+        practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
+        practiceFailureProgressSum: puzzleAssignments.practiceFailureProgressSum,
+        learningSecondsTotal: puzzleAssignments.learningSecondsTotal,
         assignedAt: puzzleAssignments.assignedAt,
         completedAt: puzzleAssignments.completedAt,
       })
