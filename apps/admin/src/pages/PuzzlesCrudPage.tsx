@@ -229,7 +229,7 @@ export function PuzzlesCrudPage() {
   }>({ circles: [], arrows: [] });
   const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
   const [audioUploading, setAudioUploading] = React.useState(false);
-  const [prependSourceIdx, setPrependSourceIdx] = React.useState<number | null>(null);
+  const [copySourceIdx, setCopySourceIdx] = React.useState<string>("");
   const [editingPuzzleId, setEditingPuzzleId] = React.useState<string | null>(
     null,
   );
@@ -434,9 +434,9 @@ export function PuzzlesCrudPage() {
 
   const leaveBlocker = useBlocker(isEditing && editingDirty);
 
-  // Reset prepend selector when the move dialog closes
+  // Reset copy selector when the move dialog closes
   React.useEffect(() => {
-    if (newMoveDialogIdx === null) setPrependSourceIdx(null);
+    if (newMoveDialogIdx === null) setCopySourceIdx("");
   }, [newMoveDialogIdx]);
 
   React.useEffect(() => {
@@ -1019,20 +1019,15 @@ export function PuzzlesCrudPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Source audio selector for prepend/trim feature */}
+                  {/* Copy audio from another move */}
                   {newMoves.some((m, i) => i !== newMoveDialogIdx && m.audioUrl) ? (
                     <div className="flex items-center gap-2">
-                      <label className="text-[11px] text-slate-500 shrink-0">
-                        Boshidan olish:
-                      </label>
                       <select
                         className="flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
-                        value={prependSourceIdx ?? ""}
-                        onChange={(e) =>
-                          setPrependSourceIdx(e.target.value !== "" ? Number(e.target.value) : null)
-                        }
+                        value={copySourceIdx}
+                        onChange={(e) => setCopySourceIdx(e.target.value)}
                       >
-                        <option value="">— Yo'q —</option>
+                        <option value="">— Boshqa yurishdan nusxa —</option>
                         {newMoves.map((m, i) =>
                           i !== newMoveDialogIdx && m.audioUrl ? (
                             <option key={i} value={i}>
@@ -1041,15 +1036,22 @@ export function PuzzlesCrudPage() {
                           ) : null,
                         )}
                       </select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={copySourceIdx === ""}
+                        onClick={() => {
+                          const src = newMoves[Number(copySourceIdx)]?.audioUrl;
+                          if (src) setNewMoveDialogAudio(src);
+                        }}
+                      >
+                        Nusxa olish
+                      </Button>
                     </div>
                   ) : null}
                   <AudioRecorder
                     disabled={busy || audioUploading}
-                    prependAudioUrl={
-                      prependSourceIdx !== null && newMoves[prependSourceIdx]?.audioUrl
-                        ? `${API_URL}/uploads/audio/${encodeURIComponent(newMoves[prependSourceIdx].audioUrl!)}`
-                        : undefined
-                    }
                     onRecorded={async (file) => {
                       try {
                         setAudioUploading(true);

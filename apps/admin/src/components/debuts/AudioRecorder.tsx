@@ -1,12 +1,10 @@
 import * as React from "react";
-import { Mic, Square, Upload, Trash2, Play, Pause, Scissors } from "lucide-react";
+import { Mic, Square, Upload, Trash2, Play, Pause } from "lucide-react";
 import { Button } from "@shaxmatchi/ui";
 
 type AudioRecorderProps = {
   onRecorded: (file: File) => void;
   disabled?: boolean;
-  /** When provided, shows a trim-and-prepend section for this audio URL */
-  prependAudioUrl?: string;
 };
 
 const BAR_COUNT = 48;
@@ -63,102 +61,13 @@ function summarizeFrames(frames: number[][]): number[] {
   return out;
 }
 
-/** Encode an AudioBuffer to a WAV Blob (16-bit PCM) */
-function encodeWav(buffer: AudioBuffer): Blob {
-  const numChannels = buffer.numberOfChannels;
-  const sampleRate = buffer.sampleRate;
-  const numSamples = buffer.length;
-  const dataSize = numSamples * numChannels * 2; // 16-bit = 2 bytes
-  const ab = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(ab);
-
-  const str = (offset: number, s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
-  };
-
-  str(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  str(8, "WAVE");
-  str(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * 2, true);
-  view.setUint16(32, numChannels * 2, true);
-  view.setUint16(34, 16, true);
-  str(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  let offset = 44;
-  for (let i = 0; i < numSamples; i++) {
-    for (let ch = 0; ch < numChannels; ch++) {
-      const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-      offset += 2;
-    }
-  }
-
-  return new Blob([ab], { type: "audio/wav" });
-}
-
-/** Slice an AudioBuffer from startSec to endSec */
-function sliceAudioBuffer(
-  ctx: AudioContext,
-  buffer: AudioBuffer,
-  startSec: number,
-  endSec: number,
-): AudioBuffer {
-  const sr = buffer.sampleRate;
-  const start = Math.max(0, Math.floor(startSec * sr));
-  const end = Math.min(buffer.length, Math.ceil(endSec * sr));
-  const length = Math.max(0, end - start);
-  const result = ctx.createBuffer(buffer.numberOfChannels, length, sr);
-  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-    result.getChannelData(ch).set(buffer.getChannelData(ch).subarray(start, end));
-  }
-  return result;
-}
-
-/** Concatenate two AudioBuffers (b appended after a) */
-function concatenateAudioBuffers(
-  ctx: AudioContext,
-  a: AudioBuffer,
-  b: AudioBuffer,
-): AudioBuffer {
-  const numChannels = Math.max(a.numberOfChannels, b.numberOfChannels);
-  const totalLength = a.length + b.length;
-  const result = ctx.createBuffer(numChannels, totalLength, a.sampleRate);
-  for (let ch = 0; ch < numChannels; ch++) {
-    const out = result.getChannelData(ch);
-    if (ch < a.numberOfChannels) out.set(a.getChannelData(ch), 0);
-    if (ch < b.numberOfChannels) out.set(b.getChannelData(ch), a.length);
-  }
-  return result;
-}
-
-function fmtSec(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  const ms = Math.round((sec % 1) * 10);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${ms}`;
-}
-
-export function AudioRecorder({ onRecorded, disabled, prependAudioUrl }: AudioRecorderProps) {
+export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
   const [state, setState] = React.useState<
     "idle" | "recording" | "recorded" | "playing"
   >("idle");
   const [elapsed, setElapsed] = React.useState(0);
   const [blob, setBlob] = React.useState<Blob | null>(null);
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
-  const [processing, setProcessing] = React.useState(false);
-
-  // Trim/prepend state
-  const [trimStart, setTrimStart] = React.useState(0);
-  const [trimEnd, setTrimEnd] = React.useState("");
-  const [sourceDuration, setSourceDuration] = React.useState<number | null>(null);
-  const [sourceCurrentTime, setSourceCurrentTime] = React.useState(0);
-  const sourceAudioRef = React.useRef<HTMLAudioElement>(null);
 
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const audioRef = React.useRef<HTMLAudioElement>(null);
@@ -171,16 +80,6 @@ export function AudioRecorder({ onRecorded, disabled, prependAudioUrl }: AudioRe
   const streamRef = React.useRef<MediaStream | null>(null);
   const recordedBarsRef = React.useRef<number[][]>([]);
   const summaryBarsRef = React.useRef<number[]>([]);
-
-  // Reset trim state when source changes
-  React.useEffect(() => {
-    if (!prependAudioUrl) {
-      setSourceDuration(null);
-      setSourceCurrentTime(0);
-      setTrimStart(0);
-      setTrimEnd("");
-    }
-  }, [prependAudioUrl]);
 
   const revokeBlobUrl = React.useCallback(() => {
     setBlobUrl((prev) => {
@@ -331,55 +230,14 @@ export function AudioRecorder({ onRecorded, disabled, prependAudioUrl }: AudioRe
     }
   }, [cleanupRecording, revokeBlobUrl]);
 
-  const uploadRecording = React.useCallback(async () => {
+  const uploadRecording = React.useCallback(() => {
     if (!blob) return;
-
-    // If no prepend source, upload as-is
-    if (!prependAudioUrl) {
-      const file = new File([blob], `recording-${Date.now()}.webm`, {
-        type: "audio/webm",
-      });
-      onRecorded(file);
-      discardRecording();
-      return;
-    }
-
-    // Trim + concatenate flow
-    setProcessing(true);
-    try {
-      const end = trimEnd !== "" ? parseFloat(trimEnd) : (sourceDuration ?? null);
-      if (end === null || end <= trimStart) {
-        alert("Tugash vaqtini to'g'ri kiriting");
-        return;
-      }
-
-      const [sourceResp, newArrayBuffer] = await Promise.all([
-        fetch(prependAudioUrl).then((r) => r.arrayBuffer()),
-        blob.arrayBuffer(),
-      ]);
-
-      const audioCtx = new AudioContext();
-      const [sourceBuffer, newBuffer] = await Promise.all([
-        audioCtx.decodeAudioData(sourceResp),
-        audioCtx.decodeAudioData(newArrayBuffer),
-      ]);
-
-      const sliced = sliceAudioBuffer(audioCtx, sourceBuffer, trimStart, end);
-      const combined = concatenateAudioBuffers(audioCtx, sliced, newBuffer);
-      await audioCtx.close();
-
-      const wavBlob = encodeWav(combined);
-      const file = new File([wavBlob], `recording-${Date.now()}.wav`, {
-        type: "audio/wav",
-      });
-      onRecorded(file);
-      discardRecording();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Audio birlashtirish xatoligi");
-    } finally {
-      setProcessing(false);
-    }
-  }, [blob, prependAudioUrl, trimStart, trimEnd, sourceDuration, onRecorded, discardRecording]);
+    const file = new File([blob], `recording-${Date.now()}.webm`, {
+      type: "audio/webm",
+    });
+    onRecorded(file);
+    discardRecording();
+  }, [blob, onRecorded, discardRecording]);
 
   const handleTimeUpdate = React.useCallback(() => {
     const audio = audioRef.current;
@@ -401,104 +259,9 @@ export function AudioRecorder({ onRecorded, disabled, prependAudioUrl }: AudioRe
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
-  const isUploading = processing;
 
   return (
     <div className="space-y-2">
-      {/* Trim/prepend section */}
-      {prependAudioUrl ? (
-        <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-2.5 space-y-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-indigo-700">
-            <Scissors className="h-3.5 w-3.5" />
-            Manbadan kesib olish
-          </div>
-
-          {/* Source audio player — shows native timer and seekbar */}
-          <audio
-            ref={sourceAudioRef}
-            src={prependAudioUrl}
-            controls
-            preload="metadata"
-            onLoadedMetadata={(e) => {
-              const d = (e.currentTarget as HTMLAudioElement).duration;
-              setSourceDuration(isFinite(d) ? d : null);
-            }}
-            onTimeUpdate={(e) => {
-              setSourceCurrentTime((e.currentTarget as HTMLAudioElement).currentTime);
-            }}
-            className="w-full h-8"
-          />
-
-          {/* Current time badge + stamp buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="tabular-nums text-xs font-mono bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 select-all">
-              {fmtSec(sourceCurrentTime)}
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => setTrimStart(parseFloat(sourceCurrentTime.toFixed(2)))}
-              title="Joriy vaqtni boshlanish sifatida belgilash"
-              className="gap-1 text-[11px]"
-            >
-              ← Boshlanish
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => setTrimEnd(sourceCurrentTime.toFixed(2))}
-              title="Joriy vaqtni tugash sifatida belgilash"
-              className="gap-1 text-[11px]"
-            >
-              Tugash →
-            </Button>
-            {sourceDuration !== null ? (
-              <span className="ml-auto text-[10px] text-indigo-400 tabular-nums">
-                / {fmtSec(sourceDuration)}
-              </span>
-            ) : null}
-          </div>
-
-          {/* Start / end number inputs */}
-          <div className="flex items-end gap-2">
-            <div className="flex flex-col gap-0.5">
-              <label className="text-[10px] text-slate-500">Boshlanish (s)</label>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                max={sourceDuration ?? undefined}
-                value={trimStart}
-                onChange={(e) => setTrimStart(Math.max(0, parseFloat(e.target.value) || 0))}
-                className="w-20 rounded border border-slate-200 bg-white px-1.5 py-1 text-xs tabular-nums"
-              />
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <label className="text-[10px] text-slate-500">
-                Tugash (s)
-              </label>
-              <input
-                type="number"
-                min={trimStart}
-                step={0.01}
-                max={sourceDuration ?? undefined}
-                placeholder={sourceDuration !== null ? sourceDuration.toFixed(2) : "oxiri"}
-                value={trimEnd}
-                onChange={(e) => setTrimEnd(e.target.value)}
-                className="w-24 rounded border border-slate-200 bg-white px-1.5 py-1 text-xs tabular-nums"
-              />
-            </div>
-          </div>
-
-          <p className="text-[10px] text-slate-400">
-            Audioni ijro eting, kerakli vaqtda "Boshlanish" yoki "Tugash" tugmasini bosing.
-            Yangi yozuv shu qismdan keyin qo'shiladi.
-          </p>
-        </div>
-      ) : null}
-
       <canvas
         ref={canvasRef}
         width={320}
@@ -577,13 +340,13 @@ export function AudioRecorder({ onRecorded, disabled, prependAudioUrl }: AudioRe
             <Button
               type="button"
               size="sm"
-              disabled={disabled || isUploading}
-              onClick={() => void uploadRecording()}
-              title={prependAudioUrl ? "Kesib qo'shib yuklash" : "Yuklash"}
+              disabled={disabled}
+              onClick={uploadRecording}
+              title="Yuklash"
               className="gap-1.5"
             >
               <Upload className="h-3.5 w-3.5" />
-              {isUploading ? "Birlashtirmoqda…" : prependAudioUrl ? "Birlashtir va yuklash" : "Yuklash"}
+              Yuklash
             </Button>
             <Button
               type="button"
