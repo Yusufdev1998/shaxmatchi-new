@@ -229,7 +229,8 @@ export function PuzzlesCrudPage() {
   }>({ circles: [], arrows: [] });
   const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
   const [audioUploading, setAudioUploading] = React.useState(false);
-  const [copySourceIdx, setCopySourceIdx] = React.useState<string>("");
+  const [copyVariantId, setCopyVariantId] = React.useState<string>("");
+  const [copyAudioUrl, setCopyAudioUrl] = React.useState<string>("");
   const [editingPuzzleId, setEditingPuzzleId] = React.useState<string | null>(
     null,
   );
@@ -434,9 +435,12 @@ export function PuzzlesCrudPage() {
 
   const leaveBlocker = useBlocker(isEditing && editingDirty);
 
-  // Reset copy selector when the move dialog closes
+  // Reset copy selectors when the move dialog closes
   React.useEffect(() => {
-    if (newMoveDialogIdx === null) setCopySourceIdx("");
+    if (newMoveDialogIdx === null) {
+      setCopyVariantId("");
+      setCopyAudioUrl("");
+    }
   }, [newMoveDialogIdx]);
 
   React.useEffect(() => {
@@ -1019,37 +1023,87 @@ export function PuzzlesCrudPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Copy audio from another move */}
-                  {newMoves.some((m, i) => i !== newMoveDialogIdx && m.audioUrl) ? (
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
-                        value={copySourceIdx}
-                        onChange={(e) => setCopySourceIdx(e.target.value)}
-                      >
-                        <option value="">— Boshqa yurishdan nusxa —</option>
-                        {newMoves.map((m, i) =>
-                          i !== newMoveDialogIdx && m.audioUrl ? (
-                            <option key={i} value={i}>
-                              {formatMoveNumber(i)} {m.san}
-                            </option>
-                          ) : null,
-                        )}
-                      </select>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        disabled={copySourceIdx === ""}
-                        onClick={() => {
-                          const src = newMoves[Number(copySourceIdx)]?.audioUrl;
-                          if (src) setNewMoveDialogAudio(src);
-                        }}
-                      >
-                        Nusxa olish
-                      </Button>
-                    </div>
-                  ) : null}
+                  {/* Copy audio: step 1 pick variant, step 2 pick move */}
+                  {(() => {
+                    const currentHas = newMoves.some((m, i) => i !== newMoveDialogIdx && m.audioUrl);
+                    const otherVariants = items.filter(
+                      (p) => p.id !== editingPuzzleId && p.moves.some((m) => m.audioUrl),
+                    );
+                    if (!currentHas && otherVariants.length === 0) return null;
+
+                    // Moves for the selected variant
+                    const movesForVariant: { label: string; audioUrl: string }[] =
+                      copyVariantId === "__current__"
+                        ? newMoves
+                            .map((m, i) => ({ m, i }))
+                            .filter(({ m, i }) => i !== newMoveDialogIdx && m.audioUrl)
+                            .map(({ m, i }) => ({
+                              label: `${formatMoveNumber(i)} ${m.san}`,
+                              audioUrl: m.audioUrl!,
+                            }))
+                        : copyVariantId
+                          ? (otherVariants.find((p) => p.id === copyVariantId)?.moves ?? [])
+                              .map((m, i) => ({ m, i }))
+                              .filter(({ m }) => m.audioUrl)
+                              .map(({ m, i }) => ({
+                                label: `${formatMoveNumber(i)} ${m.san}`,
+                                audioUrl: m.audioUrl!,
+                              }))
+                          : [];
+
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          {/* Step 1: variant */}
+                          <select
+                            className="min-w-[140px] flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                            value={copyVariantId}
+                            onChange={(e) => {
+                              setCopyVariantId(e.target.value);
+                              setCopyAudioUrl("");
+                            }}
+                          >
+                            <option value="">— Variant tanlang —</option>
+                            {currentHas ? (
+                              <option value="__current__">Bu variant</option>
+                            ) : null}
+                            {otherVariants.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Step 2: move */}
+                          <select
+                            className="min-w-[140px] flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                            value={copyAudioUrl}
+                            disabled={movesForVariant.length === 0}
+                            onChange={(e) => setCopyAudioUrl(e.target.value)}
+                          >
+                            <option value="">— Yurish tanlang —</option>
+                            {movesForVariant.map((opt) => (
+                              <option key={opt.audioUrl} value={opt.audioUrl}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={!copyAudioUrl}
+                          onClick={() => {
+                            if (copyAudioUrl) setNewMoveDialogAudio(copyAudioUrl);
+                          }}
+                        >
+                          Nusxa olish
+                        </Button>
+                      </div>
+                    );
+                  })()}
                   <AudioRecorder
                     disabled={busy || audioUploading}
                     onRecorded={async (file) => {
