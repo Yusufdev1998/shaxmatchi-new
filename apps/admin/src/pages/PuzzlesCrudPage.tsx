@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, TruncatedText } from "@shaxmatchi/ui";
 import { Chess } from "chess.js";
@@ -13,7 +13,18 @@ import {
   type PuzzleStudentSide,
 } from "../api/adminDebutsApi";
 import { adminUsersApi, type Student } from "../api/adminUsersApi";
-import { Plus, Check, X, Pencil, Trash2, ExternalLink, UserPlus, UserMinus, Mic, Volume2 } from "lucide-react";
+import {
+  Plus,
+  Check,
+  X,
+  Pencil,
+  Trash2,
+  ExternalLink,
+  UserPlus,
+  UserMinus,
+  Mic,
+  Volume2,
+} from "lucide-react";
 import { API_URL } from "../auth/auth";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { debutsUi } from "../components/debuts/debutsUi";
@@ -169,6 +180,56 @@ function movesToPgnSafe(moves: PuzzleMove[]): string {
   }
 }
 
+/** Stable JSON snapshot for comparing puzzle drafts (edit mode only). */
+function normalizeMovesForEditSnapshot(moves: PuzzleMove[]): unknown[] {
+  return moves.map((m) => ({
+    san: m.san,
+    explanation: m.explanation,
+    circles: normalizeExplanationCircles(m.circles)
+      .map((c) => ({ square: c.square, color: c.color }))
+      .sort((a, b) => a.square.localeCompare(b.square)),
+    arrows: [...(m.arrows ?? [])]
+      .map((a) => ({
+        startSquare: a.startSquare,
+        endSquare: a.endSquare,
+        color: a.color ?? null,
+      }))
+      .sort(
+        (x, y) =>
+          x.startSquare.localeCompare(y.startSquare) ||
+          x.endSquare.localeCompare(y.endSquare) ||
+          String(x.color ?? "").localeCompare(String(y.color ?? "")),
+      ),
+    audioUrl: m.audioUrl ?? null,
+  }));
+}
+
+function puzzleEditSnapshotJson(input: {
+  name: string;
+  studentSide: PuzzleStudentSide;
+  pgn: string;
+  moves: PuzzleMove[];
+}): string {
+  return JSON.stringify({
+    name: input.name.trim(),
+    studentSide: input.studentSide,
+    pgn: input.pgn.trim(),
+    moves: normalizeMovesForEditSnapshot(input.moves),
+  });
+}
+
+type PuzzleEditBaseline = {
+  name: string;
+  studentSide: PuzzleStudentSide;
+  pgn: string;
+  moves: PuzzleMove[];
+  pgnNormalized: string;
+};
+
+function clonePuzzleMoves(moves: PuzzleMove[]): PuzzleMove[] {
+  return JSON.parse(JSON.stringify(moves)) as PuzzleMove[];
+}
+
 export function PuzzlesCrudPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -192,6 +253,8 @@ export function PuzzlesCrudPage() {
     null,
   );
   const [error, setError] = React.useState<string | null>(null);
+  /** Last saved server state when editing a variant (for JSON snapshot + discard). */
+  const editBaselineRef = React.useRef<PuzzleEditBaseline | null>(null);
 
   // Assign puzzle → student
   const [assignOpenForPuzzleId, setAssignOpenForPuzzleId] = React.useState<
@@ -368,7 +431,39 @@ export function PuzzlesCrudPage() {
 
   const isEditing = editingPuzzleId !== null;
 
+  const editingDirty = React.useMemo(() => {
+    if (!isEditing || !editBaselineRef.current) return false;
+    const b = editBaselineRef.current;
+    return (
+      puzzleEditSnapshotJson({
+        name: newName,
+        studentSide,
+        pgn: newPgn,
+        moves: newMoves,
+      }) !==
+      puzzleEditSnapshotJson({
+        name: b.name,
+        studentSide: b.studentSide,
+        pgn: b.pgn,
+        moves: b.moves,
+      })
+    );
+  }, [isEditing, newName, studentSide, newPgn, newMoves]);
+
+  const leaveBlocker = useBlocker(isEditing && editingDirty);
+
+  React.useEffect(() => {
+    if (!isEditing || !editingDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isEditing, editingDirty]);
+
   function resetForm() {
+    editBaselineRef.current = null;
     setEditingPuzzleId(null);
     setNewName("");
     setStudentSide("white");
@@ -386,11 +481,20 @@ export function PuzzlesCrudPage() {
     setError(null);
     setEditingPuzzleId(p.id);
     setNewName(p.name);
-    setStudentSide(p.studentSide === "black" ? "black" : "white");
+    const side: PuzzleStudentSide = p.studentSide === "black" ? "black" : "white";
+    setStudentSide(side);
     const existingMoves = Array.isArray(p.moves) ? p.moves : [];
     const existingPgn = movesToPgnSafe(existingMoves);
+    const movesCopy = clonePuzzleMoves(existingMoves);
+    editBaselineRef.current = {
+      name: p.name,
+      studentSide: side,
+      pgn: existingPgn,
+      moves: movesCopy,
+      pgnNormalized: existingPgn,
+    };
     setNewPgn(existingPgn);
-    setNewMoves(existingMoves);
+    setNewMoves(movesCopy);
     setNewPgnNormalized(existingPgn);
     setPgnError(null);
     setNewMoveDialogIdx(null);
@@ -601,6 +705,13 @@ export function PuzzlesCrudPage() {
     }
   }
 
+  function exitEdit() {
+    if (isEditing && editingDirty) {
+      if (!confirm("Saqlanmagan o'zgarishlar bor. Tahrirdan chiqishni xohlaysizmi?")) return;
+    }
+    resetForm();
+  }
+
   async function savePuzzle() {
     const name = newName.trim();
     if (!name) return;
@@ -623,6 +734,39 @@ export function PuzzlesCrudPage() {
       resetForm();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Variantni saqlab bo'lmadi");
+    }
+  }
+
+  async function saveAndLeaveAfterBlockedNavigation() {
+    const name = newName.trim();
+    if (!name) {
+      setError("Variant nomi kiriting.");
+      return;
+    }
+    if (newMoves.length === 0) {
+      setError("PGN kiriting (hali yurishlar yo'q).");
+      return;
+    }
+    if (!editingPuzzleId) return;
+    setError(null);
+    try {
+      await updatePuzzleMutation.mutateAsync({
+        puzzleId: editingPuzzleId,
+        name,
+        moves: newMoves,
+        studentSide,
+      });
+      if (leaveBlocker.state === "blocked") {
+        leaveBlocker.proceed();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Variantni saqlab bo'lmadi");
+    }
+  }
+
+  function discardAndLeaveAfterBlockedNavigation() {
+    if (leaveBlocker.state === "blocked") {
+      leaveBlocker.proceed();
     }
   }
 
@@ -718,7 +862,17 @@ export function PuzzlesCrudPage() {
             <div className="text-xs text-slate-500">PGN avtomatik tahlil qilinadi.</div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" disabled={busy} onClick={savePuzzle}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy || (isEditing && !editingDirty)}
+              className={
+                isEditing && editingDirty
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/80"
+                  : undefined
+              }
+              onClick={savePuzzle}
+            >
               {isEditing ? "O'zgarishlarni saqlash" : "Variant qo'shish"}
             </Button>
             {isEditing ? (
@@ -727,8 +881,8 @@ export function PuzzlesCrudPage() {
                 size="sm"
                 variant="secondary"
                 disabled={busy}
-                onClick={resetForm}
-                title="Tahrirlashni bekor qilish"
+                onClick={exitEdit}
+                title="Tahrirdan chiqish"
               >
                 <X className="h-4 w-4 text-red-600" />
               </Button>
@@ -1281,6 +1435,58 @@ export function PuzzlesCrudPage() {
                 title="Yopish"
               >
                 <X className="h-4 w-4 text-red-600" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {leaveBlocker.state === "blocked" ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => leaveBlocker.reset()}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-edit-title"
+            className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
+          >
+            <div id="leave-edit-title" className="text-sm font-semibold text-slate-900">
+              Saqlanmagan o&apos;zgarishlar
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              Sahifadan chiqishdan oldin variantni saqlang yoki o&apos;zgarishlarni tashlab chiqing.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => leaveBlocker.reset()}
+              >
+                Sahifada qolish
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={discardAndLeaveAfterBlockedNavigation}
+              >
+                Tashlab chiqish
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy}
+                className="bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/80"
+                onClick={() => void saveAndLeaveAfterBlockedNavigation()}
+              >
+                Saqlash
               </Button>
             </div>
           </div>
