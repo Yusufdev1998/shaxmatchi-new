@@ -116,6 +116,9 @@ importers:
       grammy:
         specifier: ^1.41.1
         version: 1.41.1
+      multer:
+        specifier: ^2.0.0
+        version: 2.0.2
       passport:
         specifier: ^0.7.0
         version: 0.7.0
