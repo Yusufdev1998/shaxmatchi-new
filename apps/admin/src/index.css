@@ -55,3 +55,20 @@ body {
 .quill-explanation-editor .ql-toolbar select {
   touch-action: manipulation;
 }
+
+/* Move toolbar to the bottom */
+.quill-explanation-editor .quill {
+  display: flex;
+  flex-direction: column;
+}
+
+.quill-explanation-editor .ql-container.ql-snow {
+  order: 1;
+  border-top: 1px solid #ccc;
+  border-bottom: 0;
+}
+
+.quill-explanation-editor .ql-toolbar.ql-snow {
+  order: 2;
+  border-top: 0;
+}

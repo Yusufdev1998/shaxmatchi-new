@@ -2,16 +2,12 @@ import * as React from "react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 
-/*
- * On mobile (especially Android), tapping a toolbar button blurs the editor
- * and collapses the selection before the format command runs. Two things fix it:
- *
- * 1. Prevent the default on mousedown, touchstart, and pointerdown on the
- *    toolbar so the browser does not move focus away from the editor.
- *
- * 2. Track the last non-null selection via Quill's selection-change event and
- *    restore it synchronously inside the prevent handler. This covers the Android
- *    case where blur still fires asynchronously despite preventDefault.
+/**
+ * Quill's default toolbar only wires `click`. On mobile, touching the toolbar
+ * can blur the editor and collapse or expand the selection before `click` runs,
+ * so formatting applies to the wrong range (often "all text"). Preventing the
+ * default on `mousedown` / `touchstart` keeps focus and selection stable — the
+ * same fix recommended for Quill + touch browsers.
  */
 export type ExplanationQuillEditorProps = Omit<
   React.ComponentProps<typeof ReactQuill>,
@@ -32,39 +28,20 @@ export function ExplanationQuillEditor(props: ExplanationQuillEditorProps) {
       } catch {
         return;
       }
-      const toolbar = quill.getModule("toolbar") as
-        | { container?: HTMLElement }
-        | undefined;
+      const toolbar = quill.getModule("toolbar") as { container?: HTMLElement } | undefined;
       const el = toolbar?.container;
       if (!el) return;
 
-      // Always keep a copy of the last real selection so we can restore it.
-      let savedRange: { index: number; length: number } | null = null;
-
-      const onSelectionChange = (
-        range: { index: number; length: number } | null,
-      ) => {
-        if (range !== null) savedRange = range;
-      };
-      quill.on("selection-change", onSelectionChange);
-
       const prevent = (e: Event) => {
         e.preventDefault();
-        // Restore selection so the toolbar command hits the right range.
-        if (savedRange) {
-          quill.setSelection(savedRange.index, savedRange.length, "silent");
-        }
       };
 
       el.addEventListener("mousedown", prevent);
       el.addEventListener("touchstart", prevent, { passive: false });
-      el.addEventListener("pointerdown", prevent);
 
       removeListeners = () => {
         el.removeEventListener("mousedown", prevent);
         el.removeEventListener("touchstart", prevent);
-        el.removeEventListener("pointerdown", prevent);
-        quill.off("selection-change", onSelectionChange);
       };
     }, 0);
 
