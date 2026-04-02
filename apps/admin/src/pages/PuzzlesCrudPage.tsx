@@ -250,6 +250,7 @@ export function PuzzlesCrudPage() {
   }>({ circles: [], arrows: [] });
   const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
   const [audioUploading, setAudioUploading] = React.useState(false);
+  const [prependSourceIdx, setPrependSourceIdx] = React.useState<number | null>(null);
   const [editingPuzzleId, setEditingPuzzleId] = React.useState<string | null>(
     null,
   );
@@ -453,6 +454,11 @@ export function PuzzlesCrudPage() {
   }, [isEditing, newName, studentSide, newPgn, newMoves]);
 
   const leaveBlocker = useBlocker(isEditing && editingDirty);
+
+  // Reset prepend selector when the move dialog closes
+  React.useEffect(() => {
+    if (newMoveDialogIdx === null) setPrependSourceIdx(null);
+  }, [newMoveDialogIdx]);
 
   React.useEffect(() => {
     if (!isEditing || !editingDirty) return;
@@ -1039,8 +1045,37 @@ export function PuzzlesCrudPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {/* Source audio selector for prepend/trim feature */}
+                  {newMoves.some((m, i) => i !== newMoveDialogIdx && m.audioUrl) ? (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] text-slate-500 shrink-0">
+                        Boshidan olish:
+                      </label>
+                      <select
+                        className="flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                        value={prependSourceIdx ?? ""}
+                        onChange={(e) =>
+                          setPrependSourceIdx(e.target.value !== "" ? Number(e.target.value) : null)
+                        }
+                      >
+                        <option value="">— Yo'q —</option>
+                        {newMoves.map((m, i) =>
+                          i !== newMoveDialogIdx && m.audioUrl ? (
+                            <option key={i} value={i}>
+                              {formatMoveNumber(i)} {m.san}
+                            </option>
+                          ) : null,
+                        )}
+                      </select>
+                    </div>
+                  ) : null}
                   <AudioRecorder
                     disabled={busy || audioUploading}
+                    prependAudioUrl={
+                      prependSourceIdx !== null && newMoves[prependSourceIdx]?.audioUrl
+                        ? `${API_URL}/uploads/audio/${encodeURIComponent(newMoves[prependSourceIdx].audioUrl!)}`
+                        : undefined
+                    }
                     onRecorded={async (file) => {
                       try {
                         setAudioUploading(true);
