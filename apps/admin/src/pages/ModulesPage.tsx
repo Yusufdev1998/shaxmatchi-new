@@ -6,6 +6,7 @@ import { adminDebutsApi, type Course, type Level, type Module } from "../api/adm
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { debutsUi } from "../components/debuts/debutsUi";
 import { DebutsPageHeader } from "../components/debuts/DebutsPageHeader";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { InlineSpinner } from "../components/loading";
 import { Plus, Check, X, Pencil, Trash2 } from "lucide-react";
 
@@ -17,13 +18,14 @@ export function ModulesPage() {
   const [editingValue, setEditingValue] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
 
+  const queryClient = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+
   const levelId = params.levelId;
   const courseId = params.courseId;
   if (!levelId || !courseId) return <div className="text-xs text-slate-600">Missing params</div>;
   const levelIdSafe: string = levelId;
   const courseIdSafe: string = courseId;
-
-  const queryClient = useQueryClient();
   const levelsQuery = useQuery({
     queryKey: ["adminDebuts", "levels"],
     queryFn: adminDebutsApi.listLevels,
@@ -100,7 +102,14 @@ export function ModulesPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Modul va BARCHA vazifalar/pazllarni o'chirasizmi?")) return;
+    const ok = await confirm({
+      title: "Modulni o'chirish",
+      description: "Modul va BARCHA vazifalar/pazllarni o'chirasizmi?",
+      confirmLabel: "O'chirish",
+      cancelLabel: "Bekor qilish",
+      variant: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await deleteModuleMutation.mutateAsync(id);
@@ -237,6 +246,8 @@ export function ModulesPage() {
           </div>
         )}
       </div>
+
+      {confirmDialog}
     </div>
   );
 }

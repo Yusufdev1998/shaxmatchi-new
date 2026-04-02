@@ -2,6 +2,7 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, TruncatedText } from "@shaxmatchi/ui";
 import { Plus, Check, X, Pencil, Trash2, Link2, Copy } from "lucide-react";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { InlineSpinner, LoadingCard } from "../components/loading";
 import { adminUsersApi, type Student } from "../api/adminUsersApi";
@@ -25,6 +26,7 @@ export function UsersPage() {
   const [editingTelegramId, setEditingTelegramId] = React.useState("");
 
   const queryClient = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const studentsQuery = useQuery({
     queryKey: ["adminUsers", "students"],
     queryFn: adminUsersApi.listStudents,
@@ -286,7 +288,13 @@ export function UsersPage() {
                             variant="danger"
                             disabled={busy}
                             onClick={async () => {
-                              const ok = confirm(`O'quvchini o'chirish: "${s.login}"?`);
+                              const ok = await confirm({
+                                title: "O'quvchini o'chirish",
+                                description: `O'quvchini o'chirish: "${s.login}"?`,
+                                confirmLabel: "O'chirish",
+                                cancelLabel: "Bekor qilish",
+                                variant: "danger",
+                              });
                               if (!ok) return;
                               try {
                                 setError(null);
@@ -347,6 +355,8 @@ export function UsersPage() {
           </div>
         </div>
       ) : null}
+
+      {confirmDialog}
     </div>
   );
 }

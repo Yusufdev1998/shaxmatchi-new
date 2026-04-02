@@ -59,16 +59,16 @@ export function ExplanationShapesEditor({ fen, circles, arrows, onChange }: Prop
         setArrowStart(null);
         return;
       }
+      const newArrow = { startSquare: arrowStart, endSquare: square, color: shapeColor };
+      const existingIdx = arrows.findIndex(
+        (a) => a.startSquare === arrowStart && a.endSquare === square,
+      );
       onChange({
         circles,
-        arrows: [
-          ...arrows,
-          {
-            startSquare: arrowStart,
-            endSquare: square,
-            color: shapeColor,
-          },
-        ],
+        arrows:
+          existingIdx >= 0
+            ? arrows.map((a, i) => (i === existingIdx ? newArrow : a))
+            : [...arrows, newArrow],
       });
       setArrowStart(null);
     },

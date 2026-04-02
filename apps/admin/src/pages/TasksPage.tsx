@@ -6,6 +6,7 @@ import { adminDebutsApi, type Course, type Level, type Module, type Task } from 
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { debutsUi } from "../components/debuts/debutsUi";
 import { DebutsPageHeader } from "../components/debuts/DebutsPageHeader";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { InlineSpinner } from "../components/loading";
 import { Plus, Check, X, Pencil, Trash2 } from "lucide-react";
 
@@ -17,6 +18,9 @@ export function TasksPage() {
   const [editingValue, setEditingValue] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
 
+  const queryClient = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+
   const levelId = params.levelId;
   const courseId = params.courseId;
   const moduleId = params.moduleId;
@@ -24,8 +28,6 @@ export function TasksPage() {
   const levelIdSafe: string = levelId;
   const courseIdSafe: string = courseId;
   const moduleIdSafe: string = moduleId;
-
-  const queryClient = useQueryClient();
   const levelsQuery = useQuery({
     queryKey: ["adminDebuts", "levels"],
     queryFn: adminDebutsApi.listLevels,
@@ -112,7 +114,14 @@ export function TasksPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Vazifa va BARCHA pazllarni o'chirasizmi?")) return;
+    const ok = await confirm({
+      title: "Vazifani o'chirish",
+      description: "Vazifa va BARCHA pazllarni o'chirasizmi?",
+      confirmLabel: "O'chirish",
+      cancelLabel: "Bekor qilish",
+      variant: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await deleteTaskMutation.mutateAsync(id);
@@ -250,6 +259,8 @@ export function TasksPage() {
           </div>
         )}
       </div>
+
+      {confirmDialog}
     </div>
   );
 }

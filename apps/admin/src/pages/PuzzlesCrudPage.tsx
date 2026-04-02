@@ -39,6 +39,7 @@ import {
   isExplanationShapeColor,
   normalizeExplanationCircles,
 } from "@shaxmatchi/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { InlineSpinner, LoadingCard } from "../components/loading";
 import { formatLearningDuration } from "../lib/formatLearningDuration";
 
@@ -268,6 +269,7 @@ export function PuzzlesCrudPage() {
   const [assignError, setAssignError] = React.useState<string | null>(null);
   const [assignSuccess, setAssignSuccess] = React.useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const levelId = params.levelId;
   const courseId = params.courseId;
@@ -705,9 +707,16 @@ export function PuzzlesCrudPage() {
     }
   }
 
-  function exitEdit() {
+  async function exitEdit() {
     if (isEditing && editingDirty) {
-      if (!confirm("Saqlanmagan o'zgarishlar bor. Tahrirdan chiqishni xohlaysizmi?")) return;
+      const ok = await confirm({
+        title: "Saqlanmagan o'zgarishlar",
+        description: "Tahrirdan chiqishni xohlaysizmi? O'zgarishlar saqlanmaydi.",
+        confirmLabel: "Chiqish",
+        cancelLabel: "Bekor qilish",
+        variant: "danger",
+      });
+      if (!ok) return;
     }
     resetForm();
   }
@@ -771,7 +780,14 @@ export function PuzzlesCrudPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Variantni o'chirasizmi?")) return;
+    const ok = await confirm({
+      title: "Variantni o'chirish",
+      description: "Variantni o'chirasizmi?",
+      confirmLabel: "O'chirish",
+      cancelLabel: "Bekor qilish",
+      variant: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await deletePuzzleMutation.mutateAsync(id);
@@ -881,7 +897,7 @@ export function PuzzlesCrudPage() {
                 size="sm"
                 variant="secondary"
                 disabled={busy}
-                onClick={exitEdit}
+                onClick={() => void exitEdit()}
                 title="Tahrirdan chiqish"
               >
                 <X className="h-4 w-4 text-red-600" />
@@ -1002,7 +1018,15 @@ export function PuzzlesCrudPage() {
                     variant="danger"
                     disabled={busy || audioUploading}
                     title="Audioni o'chirish"
-                    onClick={() => {
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Audioni o'chirish",
+                        description: "Audio tushuntirishni o'chirasizmi?",
+                        confirmLabel: "O'chirish",
+                        cancelLabel: "Bekor qilish",
+                        variant: "danger",
+                      });
+                      if (!ok) return;
                       const filename = newMoveDialogAudio;
                       setNewMoveDialogAudio(undefined);
                       if (filename) {
@@ -1335,9 +1359,17 @@ export function PuzzlesCrudPage() {
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      const ok = confirm(`Tayinlovni bekor qilish: "${s.login}"?`);
-                                      if (!ok) return;
-                                      void unassign(a.id);
+                                      void (async () => {
+                                        const ok = await confirm({
+                                          title: "Tayinlovni bekor qilish",
+                                          description: `Tayinlovni bekor qilish: "${s.login}"?`,
+                                          confirmLabel: "Bekor qilish",
+                                          cancelLabel: "Yopish",
+                                          variant: "danger",
+                                        });
+                                        if (!ok) return;
+                                        void unassign(a.id);
+                                      })();
                                     }}
                                   >
                                     <UserMinus className="h-4 w-4" />
@@ -1419,7 +1451,13 @@ export function PuzzlesCrudPage() {
                   variant="danger"
                   disabled={assignBusy}
                   onClick={async () => {
-                    const ok = confirm(`Tanlangan o'quvchidan bu pazlni olib tashlamoqchimisiz?`);
+                    const ok = await confirm({
+                      title: "Tayinlovni bekor qilish",
+                      description: "Tanlangan o'quvchidan bu pazlni olib tashlamoqchimisiz?",
+                      confirmLabel: "Bekor qilish",
+                      cancelLabel: "Yopish",
+                      variant: "danger",
+                    });
                     if (!ok) return;
                     await unassign(selectedAssignment.id);
                   }}
@@ -1492,6 +1530,8 @@ export function PuzzlesCrudPage() {
           </div>
         </div>
       ) : null}
+
+      {confirmDialog}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { adminDebutsApi, type Level } from "../api/adminDebutsApi";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { debutsUi } from "../components/debuts/debutsUi";
 import { DebutsPageHeader } from "../components/debuts/DebutsPageHeader";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { InlineSpinner } from "../components/loading";
 import { Plus, Check, X, Pencil, Trash2 } from "lucide-react";
 
@@ -18,6 +19,7 @@ export function DebutLevelsPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const levelsQuery = useQuery({
     queryKey: ["adminDebuts", "levels"],
     queryFn: adminDebutsApi.listLevels,
@@ -82,7 +84,14 @@ export function DebutLevelsPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Debyut darajasi va BARCHA kurslar/modullar/vazifalar/pazllarni o'chirasizmi?")) return;
+    const ok = await confirm({
+      title: "Debyut darajasini o'chirish",
+      description: "Debyut darajasi va BARCHA kurslar/modullar/vazifalar/pazllarni o'chirasizmi?",
+      confirmLabel: "O'chirish",
+      cancelLabel: "Bekor qilish",
+      variant: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await deleteLevelMutation.mutateAsync(id);
@@ -199,6 +208,8 @@ export function DebutLevelsPage() {
           </div>
         )}
       </div>
+
+      {confirmDialog}
     </div>
   );
 }

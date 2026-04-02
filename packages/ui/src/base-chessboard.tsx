@@ -92,10 +92,16 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
     [arrowsFromProp]
   );
 
-  const mergedArrows = React.useMemo<Arrow[] | undefined>(() => {
+  /** Always an array so react-chessboard clears overlays when a move has no arrows (omitting `arrows` leaves stale lines). */
+  const mergedArrows = React.useMemo<Arrow[]>(() => {
     const fromOptions = props.options?.arrows ?? [];
-    const merged = [...fromOptions, ...normalizedPropArrows];
-    return merged.length > 0 ? merged : undefined;
+    const all: Arrow[] = [...fromOptions, ...normalizedPropArrows];
+    // react-chessboard keys arrows by `${startSquare}-${endSquare}`;
+    // duplicate keys break React reconciliation and leak SVG elements.
+    // Keep only the last arrow per unique path (so a colored variant wins).
+    const unique = new Map<string, Arrow>();
+    for (const a of all) unique.set(`${a.startSquare}-${a.endSquare}`, a);
+    return Array.from(unique.values());
   }, [props.options?.arrows, normalizedPropArrows]);
   const circleSquares = React.useMemo<Record<string, React.CSSProperties>>(
     () =>
@@ -309,7 +315,7 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
       ...baseChessboardArrowOptions,
       ...props.options?.arrowOptions,
     },
-    ...(mergedArrows !== undefined ? { arrows: mergedArrows } : {}),
+    arrows: mergedArrows,
     squareStyles: {
       ...circleSquares,
       ...(props.options?.squareStyles ?? {}),
