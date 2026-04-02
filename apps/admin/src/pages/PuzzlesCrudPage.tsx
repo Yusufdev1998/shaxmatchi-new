@@ -43,27 +43,6 @@ import { useConfirmDialog } from "../components/ConfirmDialog";
 import { InlineSpinner, LoadingCard } from "../components/loading";
 import { formatLearningDuration } from "../lib/formatLearningDuration";
 
-const quillModules = {
-  toolbar: [
-    ["bold", "italic", "underline"],
-    [{ color: [] }, { background: [] }],
-    [{ list: "ordered" }, { list: "bullet" }],
-    ["link"],
-    ["clean"],
-  ],
-};
-
-// Quill uses a single "list" format with values "ordered" | "bullet".
-// Including "bullet" here causes: "Cannot register 'bullet' specified in formats config".
-const quillFormats = [
-  "bold",
-  "italic",
-  "underline",
-  "color",
-  "background",
-  "list",
-  "link",
-];
 
 function formatMoveNumber(idx: number) {
   const moveNo = Math.floor(idx / 2) + 1;
@@ -991,15 +970,10 @@ export function PuzzlesCrudPage() {
                 <X className="h-4 w-4 text-red-600" />
               </Button>
             </div>
-            <div className="mt-3 rounded-xl border border-slate-200 bg-white">
-              <ExplanationQuillEditor
-                theme="snow"
-                value={newMoveDialogValue}
-                onChange={setNewMoveDialogValue}
-                modules={quillModules}
-                formats={quillFormats}
-              />
-            </div>
+            <ExplanationQuillEditor
+              value={newMoveDialogValue}
+              onChange={setNewMoveDialogValue}
+            />
             <ExplanationShapesEditor
               fen={fenForExplanationPreview(newMoves, newMoveDialogIdx!)}
               circles={newMoveDialogShapes.circles}
