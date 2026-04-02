@@ -45,12 +45,14 @@ export type StudentPuzzleSummary = {
   assignment: StudentPuzzleAssignment | null;
 };
 
+export type PuzzleBoardCircle = { square: string; color?: string };
 export type PuzzleBoardArrow = { startSquare: string; endSquare: string; color?: string };
 export type PuzzleMove = {
   san: string;
   explanation: string;
-  circles?: string[];
+  circles?: PuzzleBoardCircle[] | string[];
   arrows?: PuzzleBoardArrow[];
+  audioUrl?: string;
 };
 export type PuzzleStudentSide = "white" | "black";
 export type StudentPuzzleDetail = {

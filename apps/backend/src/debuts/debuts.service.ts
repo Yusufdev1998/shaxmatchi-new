@@ -228,8 +228,9 @@ export class DebutsService {
       moves: Array<{
         san: string;
         explanation: string;
-        circles?: string[];
+        circles?: Array<{ square: string; color?: string }>;
         arrows?: Array<{ startSquare: string; endSquare: string; color?: string }>;
+        audioUrl?: string;
       }>;
       studentSide?: "white" | "black";
     },
@@ -254,8 +255,9 @@ export class DebutsService {
       moves: Array<{
         san: string;
         explanation: string;
-        circles?: string[];
+        circles?: Array<{ square: string; color?: string }>;
         arrows?: Array<{ startSquare: string; endSquare: string; color?: string }>;
+        audioUrl?: string;
       }>;
       studentSide?: "white" | "black";
     },

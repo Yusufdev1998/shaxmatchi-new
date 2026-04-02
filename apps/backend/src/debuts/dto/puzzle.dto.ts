@@ -1,4 +1,4 @@
-import { Type } from "class-transformer";
+import { plainToInstance, Transform, Type } from "class-transformer";
 import {
   IsArray,
   IsIn,
@@ -8,6 +8,42 @@ import {
   MinLength,
   ValidateNested,
 } from "class-validator";
+
+/** Must stay in sync with `@shaxmatchi/ui` EXPLANATION_SHAPE_COLORS. */
+export const EXPLANATION_SHAPE_COLORS = [
+  "#398841",
+  "#c41e3a",
+  "#2563eb",
+  "#ca8a04",
+  "#7c3aed",
+] as const;
+
+function transformCircles(value: unknown): PuzzleCircleDto[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    let plain: { square: string; color?: string };
+    if (typeof item === "string") {
+      plain = { square: item, color: EXPLANATION_SHAPE_COLORS[0] };
+    } else if (item && typeof item === "object" && "square" in item) {
+      const o = item as { square?: string; color?: string };
+      plain = { square: o.square ?? "", ...(o.color ? { color: o.color } : {}) };
+    } else {
+      plain = { square: "" };
+    }
+    /** Instances required so ValidationPipe whitelist allows `square` / `color`. */
+    return plainToInstance(PuzzleCircleDto, plain);
+  });
+}
+
+export class PuzzleCircleDto {
+  @IsString()
+  @Matches(/^[a-h][1-8]$/)
+  square!: string;
+
+  @IsOptional()
+  @IsIn([...EXPLANATION_SHAPE_COLORS])
+  color?: string;
+}
 
 export class PuzzleArrowDto {
   @IsString()
@@ -19,7 +55,7 @@ export class PuzzleArrowDto {
   endSquare!: string;
 
   @IsOptional()
-  @IsString()
+  @IsIn([...EXPLANATION_SHAPE_COLORS])
   color?: string;
 }
 
@@ -31,11 +67,13 @@ export class PuzzleMoveDto {
   @IsString()
   explanation!: string;
 
-  /** Highlighted squares (ring circles), e.g. `["d5","f5"]`. */
+  /** Highlighted squares (rings); legacy `string[]` is normalized to objects. */
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  circles?: string[];
+  @ValidateNested({ each: true })
+  @Type(() => PuzzleCircleDto)
+  @Transform(({ value }) => transformCircles(value))
+  circles?: PuzzleCircleDto[];
 
   /** Arrows drawn on the board for this move’s explanation. */
   @IsOptional()
@@ -43,6 +81,11 @@ export class PuzzleMoveDto {
   @ValidateNested({ each: true })
   @Type(() => PuzzleArrowDto)
   arrows?: PuzzleArrowDto[];
+
+  /** Filename of an uploaded audio explanation (served at /uploads/audio/:filename). */
+  @IsOptional()
+  @IsString()
+  audioUrl?: string;
 }
 
 export class PuzzleDto {
@@ -60,4 +103,3 @@ export class PuzzleDto {
   @Type(() => PuzzleMoveDto)
   moves!: PuzzleMoveDto[];
 }
-

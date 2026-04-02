@@ -3,8 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, TruncatedText } from "@shaxmatchi/ui";
 import { Chess } from "chess.js";
-import ReactQuill from "react-quill-new";
-import "react-quill-new/dist/quill.snow.css";
+import { ExplanationQuillEditor } from "../components/debuts/ExplanationQuillEditor";
 import {
   adminDebutsApi,
   type PuzzleAssignmentMode,
@@ -14,11 +13,21 @@ import {
   type PuzzleStudentSide,
 } from "../api/adminDebutsApi";
 import { adminUsersApi, type Student } from "../api/adminUsersApi";
-import { Plus, Check, X, Pencil, Trash2, ExternalLink, UserPlus, UserMinus } from "lucide-react";
+import { Plus, Check, X, Pencil, Trash2, ExternalLink, UserPlus, UserMinus, Mic, Volume2 } from "lucide-react";
+import { API_URL } from "../auth/auth";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { debutsUi } from "../components/debuts/debutsUi";
 import { DebutsPageHeader } from "../components/debuts/DebutsPageHeader";
-import { ExplanationShapesEditor } from "../components/debuts/ExplanationShapesEditor";
+import { AudioRecorder } from "../components/debuts/AudioRecorder";
+import {
+  ExplanationShapesEditor,
+  type ExplanationCircle,
+} from "../components/debuts/ExplanationShapesEditor";
+import {
+  DEFAULT_EXPLANATION_SHAPE_COLOR,
+  isExplanationShapeColor,
+  normalizeExplanationCircles,
+} from "@shaxmatchi/ui";
 import { InlineSpinner, LoadingCard } from "../components/loading";
 import { formatLearningDuration } from "../lib/formatLearningDuration";
 
@@ -131,8 +140,16 @@ function moveHasExplanationContent(m: PuzzleMove): boolean {
   return (
     m.explanation.trim().length > 0 ||
     (m.circles?.length ?? 0) > 0 ||
-    (m.arrows?.length ?? 0) > 0
+    (m.arrows?.length ?? 0) > 0 ||
+    Boolean(m.audioUrl)
   );
+}
+
+function circlesForEditor(m: PuzzleMove): ExplanationCircle[] {
+  return normalizeExplanationCircles(m.circles).map((c) => ({
+    square: c.square,
+    color: isExplanationShapeColor(c.color) ? c.color : DEFAULT_EXPLANATION_SHAPE_COLOR,
+  }));
 }
 
 function movesToPgnSafe(moves: PuzzleMove[]): string {
@@ -166,9 +183,11 @@ export function PuzzlesCrudPage() {
   );
   const [newMoveDialogValue, setNewMoveDialogValue] = React.useState("");
   const [newMoveDialogShapes, setNewMoveDialogShapes] = React.useState<{
-    circles: string[];
+    circles: ExplanationCircle[];
     arrows: PuzzleBoardArrow[];
   }>({ circles: [], arrows: [] });
+  const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
+  const [audioUploading, setAudioUploading] = React.useState(false);
   const [editingPuzzleId, setEditingPuzzleId] = React.useState<string | null>(
     null,
   );
@@ -360,6 +379,7 @@ export function PuzzlesCrudPage() {
     setNewMoveDialogIdx(null);
     setNewMoveDialogValue("");
     setNewMoveDialogShapes({ circles: [], arrows: [] });
+    setNewMoveDialogAudio(undefined);
   }
 
   function startEdit(p: Puzzle) {
@@ -376,6 +396,7 @@ export function PuzzlesCrudPage() {
     setNewMoveDialogIdx(null);
     setNewMoveDialogValue("");
     setNewMoveDialogShapes({ circles: [], arrows: [] });
+    setNewMoveDialogAudio(undefined);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -388,6 +409,7 @@ export function PuzzlesCrudPage() {
           explanation: prevAt.explanation,
           circles: prevAt.circles,
           arrows: prevAt.arrows,
+          audioUrl: prevAt.audioUrl,
         };
       return m;
     });
@@ -733,8 +755,9 @@ export function PuzzlesCrudPage() {
                       <div className="font-mono text-xs text-slate-600">
                         {formatMoveNumber(idx)} {m.san}
                       </div>
-                      <div className="mt-0.5 text-xs text-slate-500">
-                        {moveHasExplanationContent(m) ? "tushuntirilgan" : "tushuntirish yo'q"}
+                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+                        <span>{moveHasExplanationContent(m) ? "tushuntirilgan" : "tushuntirish yo'q"}</span>
+                        {m.audioUrl ? <Volume2 className="h-3 w-3 text-indigo-500" /> : null}
                       </div>
                     </div>
                     <Button
@@ -749,9 +772,10 @@ export function PuzzlesCrudPage() {
                         setNewMoveDialogIdx(idx);
                         setNewMoveDialogValue(m.explanation);
                         setNewMoveDialogShapes({
-                          circles: m.circles ?? [],
+                          circles: circlesForEditor(m),
                           arrows: m.arrows ?? [],
                         });
+                        setNewMoveDialogAudio(m.audioUrl);
                       }}
                     >
                       {moveHasExplanationContent(m) ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -792,7 +816,7 @@ export function PuzzlesCrudPage() {
               </Button>
             </div>
             <div className="mt-3 rounded-xl border border-slate-200 bg-white">
-              <ReactQuill
+              <ExplanationQuillEditor
                 theme="snow"
                 value={newMoveDialogValue}
                 onChange={setNewMoveDialogValue}
@@ -806,16 +830,103 @@ export function PuzzlesCrudPage() {
               arrows={newMoveDialogShapes.arrows}
               onChange={setNewMoveDialogShapes}
             />
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+              <div className="mb-2 text-xs font-medium text-slate-700">
+                <Mic className="mr-1.5 inline h-3.5 w-3.5" />
+                Audio tushuntirish
+              </div>
+              {newMoveDialogAudio ? (
+                <div className="flex items-center gap-2">
+                  <audio
+                    controls
+                    src={`${API_URL}/uploads/audio/${encodeURIComponent(newMoveDialogAudio)}`}
+                    className="h-8 max-w-[260px] flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    disabled={busy || audioUploading}
+                    title="Audioni o'chirish"
+                    onClick={() => {
+                      const filename = newMoveDialogAudio;
+                      setNewMoveDialogAudio(undefined);
+                      if (filename) {
+                        void adminDebutsApi.deleteAudio(filename).catch(() => {});
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <AudioRecorder
+                    disabled={busy || audioUploading}
+                    onRecorded={async (file) => {
+                      try {
+                        setAudioUploading(true);
+                        const res = await adminDebutsApi.uploadAudio(file);
+                        setNewMoveDialogAudio(res.filename);
+                      } catch (err) {
+                        alert(err instanceof Error ? err.message : "Audio yuklab bo'lmadi");
+                      } finally {
+                        setAudioUploading(false);
+                      }
+                    }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="h-px flex-1 bg-slate-200" />
+                    <span className="text-[10px] text-slate-400">yoki</span>
+                    <div className="h-px flex-1 bg-slate-200" />
+                  </div>
+                  <label
+                    className={[
+                      "inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-slate-400 hover:bg-white",
+                      audioUploading ? "pointer-events-none opacity-50" : "",
+                    ].join(" ")}
+                  >
+                    {audioUploading ? (
+                      <InlineSpinner />
+                    ) : (
+                      <Volume2 className="h-4 w-4" />
+                    )}
+                    {audioUploading ? "Yuklanmoqda…" : "Fayldan yuklash"}
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      disabled={audioUploading || busy}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        try {
+                          setAudioUploading(true);
+                          const res = await adminDebutsApi.uploadAudio(file);
+                          setNewMoveDialogAudio(res.filename);
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : "Audio yuklab bo'lmadi");
+                        } finally {
+                          setAudioUploading(false);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
             <div className="mt-3 flex gap-2">
               <Button
                 type="button"
-                disabled={busy}
+                disabled={busy || audioUploading}
                 title="Saqlash"
                 onClick={() => {
                   const idx = newMoveDialogIdx;
                   if (idx === null) return;
                   const value = newMoveDialogValue;
                   const { circles: c, arrows: a } = newMoveDialogShapes;
+                  const audio = newMoveDialogAudio;
                   setNewMoves((prev) =>
                     prev.map((x, i) =>
                       i === idx
@@ -824,6 +935,7 @@ export function PuzzlesCrudPage() {
                             explanation: value,
                             circles: c.length > 0 ? c : undefined,
                             arrows: a.length > 0 ? a : undefined,
+                            audioUrl: audio || undefined,
                           }
                         : x,
                     ),

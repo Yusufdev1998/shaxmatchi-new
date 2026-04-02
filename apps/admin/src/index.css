@@ -39,3 +39,19 @@ body {
 .animate-board-shake {
   animation: board-shake 0.45s ease-in-out;
 }
+
+/* Quill: reliable partial selection on mobile when using the toolbar */
+.quill-explanation-editor .ql-editor {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.quill-explanation-editor .ql-toolbar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.quill-explanation-editor .ql-toolbar button,
+.quill-explanation-editor .ql-toolbar select {
+  touch-action: manipulation;
+}

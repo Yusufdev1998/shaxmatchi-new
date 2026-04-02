@@ -8,6 +8,10 @@ import {
   type PieceDropHandlerArgs,
 } from "react-chessboard";
 import { Chess, type Square } from "chess.js";
+import {
+  type ExplanationBoardCircle,
+  normalizeExplanationCircles,
+} from "./explanation-shape-colors";
 
 /** Default arrow styling for this board (user `options.arrowOptions` merges on top). */
 export const baseChessboardArrowOptions = {
@@ -51,9 +55,9 @@ export type BaseChessboardWithClickMoveProps = BaseChessboardProps & {
    */
   clickToMove?: ChessboardClickToMoveConfig;
   /**
-   * Optional static circles rendered on given squares (e.g. ["f4", "e3"]).
+   * Optional static circles on squares. Legacy `string[]` (square names only) is supported.
    */
-  circles?: string[];
+  circles?: string[] | ExplanationBoardCircle[];
   /**
    * Optional arrows (e.g. e2→e4). Merged after `options.arrows` if both are set.
    */
@@ -71,7 +75,10 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
   >({});
 
   const clickToMove = props.clickToMove;
-  const circles = props.circles ?? [];
+  const circlesNormalized = React.useMemo(
+    () => normalizeExplanationCircles(props.circles ?? []),
+    [props.circles],
+  );
   const arrowsFromProp = props.arrows ?? [];
   const position = props.options?.position;
 
@@ -92,14 +99,14 @@ export function BaseChessboard(props: BaseChessboardWithClickMoveProps) {
   }, [props.options?.arrows, normalizedPropArrows]);
   const circleSquares = React.useMemo<Record<string, React.CSSProperties>>(
     () =>
-      circles.reduce<Record<string, React.CSSProperties>>((acc, square) => {
-        acc[square] = {
-          boxShadow: "inset 0 0 0 3px rgba(57, 136, 65, 0.95)",
+      circlesNormalized.reduce<Record<string, React.CSSProperties>>((acc, c) => {
+        acc[c.square] = {
+          boxShadow: `inset 0 0 0 3px ${c.color}`,
           borderRadius: "50%",
         };
         return acc;
       }, {}),
-    [circles]
+    [circlesNormalized],
   );
 
   const chessForMoves = React.useMemo(() => {

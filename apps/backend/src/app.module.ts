@@ -8,6 +8,7 @@ import { DebutsModule } from "./debuts/debuts.module";
 import { DbModule } from "./db/db.module";
 import { StudentModule } from "./student/student.module";
 import { TelegramModule } from "./telegram/telegram.module";
+import { UploadsModule } from "./uploads/uploads.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TelegramModule } from "./telegram/telegram.module";
     DebutsModule,
     StudentModule,
     TelegramModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [AppService]

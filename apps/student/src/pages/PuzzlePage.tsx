@@ -25,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
+import { API_URL } from "../auth/auth";
 import {
   playAchievementSound,
   playFailSound,
@@ -45,6 +46,55 @@ function isStudentMoveAtIndex(side: PuzzleStudentSide, moveIdx: number): boolean
 
 function isOpponentMoveAtIndex(side: PuzzleStudentSide, moveIdx: number): boolean {
   return !isStudentMoveAtIndex(side, moveIdx);
+}
+
+const CHESS_KING_WHITE = "\u2654";
+const CHESS_KING_BLACK = "\u265a";
+
+/** Half-moves 0..length−1: white at even indices, black at odd. `moveIdx` = number of half-moves on the board. */
+function SideMoveProgress({
+  moveIdx,
+  totalHalfMoves,
+  className,
+}: {
+  moveIdx: number;
+  totalHalfMoves: number;
+  className?: string;
+}) {
+  if (totalHalfMoves === 0) return null;
+  if (moveIdx >= totalHalfMoves) return null;
+
+  const whiteTotal = Math.ceil(totalHalfMoves / 2);
+  const blackTotal = Math.floor(totalHalfMoves / 2);
+  const isWhiteToMove = moveIdx % 2 === 0;
+  const whitePlayed = moveIdx / 2;
+  const blackPlayed = Math.floor(moveIdx / 2);
+  const played = isWhiteToMove ? whitePlayed : blackPlayed;
+  const total = isWhiteToMove ? whiteTotal : blackTotal;
+  const piece = isWhiteToMove ? CHESS_KING_WHITE : CHESS_KING_BLACK;
+  const sideTitle = isWhiteToMove ? "Oqlar" : "Qoralar";
+
+  return (
+    <div className={className} role="status" aria-live="polite">
+      {/* One neutral chip: background stays the same; only the side icon + counts change. */}
+      <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200/90 bg-gradient-to-b from-slate-50 to-white px-2.5 py-1 shadow-sm">
+        <span
+          className="select-none text-lg leading-none text-slate-800 sm:text-xl"
+          style={{ fontFamily: '"Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", sans-serif' }}
+          title={sideTitle}
+          aria-hidden
+        >
+          {piece}
+        </span>
+        <span className="font-mono text-[11px] tabular-nums text-slate-800 sm:text-xs">
+          {played}/{total}
+        </span>
+      </span>
+      <span className="sr-only">
+        Navbat {isWhiteToMove ? "oqlar" : "qoralar"}, {played} dan {total} yurish
+      </span>
+    </div>
+  );
 }
 
 function normalizeExplanationHtml(html: string): string {
@@ -75,6 +125,7 @@ export function PuzzlePage() {
   /** Avoid resetting board/mode when the same variant refetches (e.g. after consume-attempt). */
   const loadedPuzzleIdRef = React.useRef<string | null>(null);
   const practiceBoardWrapRef = React.useRef<HTMLDivElement>(null);
+  const [isStudyAudioPlaying, setIsStudyAudioPlaying] = React.useState(false);
   const [moveIdx, setMoveIdx] = React.useState(0);
   const [isPracticeResetting, setIsPracticeResetting] = React.useState(false);
   const [isLimitRedirecting, setIsLimitRedirecting] = React.useState(false);
@@ -150,9 +201,14 @@ export function PuzzlePage() {
         g.move(puzzleMoves[i].san);
       }
       setGame(g);
-      setMoveIdx(clamped);
+      setMoveIdx((prev) => {
+        if (mode === "study" && clamped > prev) {
+          playMoveSound();
+        }
+        return clamped;
+      });
     },
-    [puzzleMoves],
+    [puzzleMoves, mode],
   );
 
   const isPracticeComplete = mode === "practice" && moveIdx >= puzzleMoves.length;
@@ -338,6 +394,10 @@ export function PuzzlePage() {
   }, [handlePracticeLineCompleted, mode, puzzle, fen, moveIdx, puzzleMoves, stopAutoplay]);
 
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
+
+  React.useEffect(() => {
+    setIsStudyAudioPlaying(false);
+  }, [moveIdx, mode]);
   React.useEffect(
     () => () => {
       if (limitRedirectTimerRef.current !== null) {
@@ -630,10 +690,11 @@ export function PuzzlePage() {
               <ChevronLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
               <span className="-ml-0.5">oldingi</span>
             </Button>
-            <div className="min-w-0 flex-1 text-center text-[11px] text-slate-500 sm:text-xs">
-              Qadam <span className="font-mono">{moveIdx}</span>/
-              <span className="font-mono">{puzzleMoves.length}</span>
-            </div>
+            <SideMoveProgress
+              moveIdx={moveIdx}
+              totalHalfMoves={puzzleMoves.length}
+              className="min-w-0 flex-1 flex items-center justify-center text-[11px] sm:text-xs"
+            />
             {moveIdx >= puzzleMoves.length ? (
               <Button
                 size="sm"
@@ -671,9 +732,13 @@ export function PuzzlePage() {
           <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
             {isRepeatComplete ? <div>Takrorlash yakunlandi.</div> : null}
             {mode === "repeat" && !isRepeatComplete ? (
-              <div className="text-xs text-slate-500">
-                Navbat: {isRepeatStudentTurn ? "siz" : "raqib (avtomatik)"}
-              </div>
+              <p className="text-xs text-slate-600 text-center sm:text-left">
+                {isRepeatStudentTurn ? (
+                  <>Sizning yurishingiz — doskada yurish qiling.</>
+                ) : (
+                  <>Raqib yurishi avtomatik bajariladi.</>
+                )}
+              </p>
             ) : null}
             {moveIdx > 0 ? (
               <>
@@ -692,8 +757,46 @@ export function PuzzlePage() {
 
       {mode === "study" ? (
         <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:p-2">
-          <div className="text-sm font-semibold">Tushuntirish</div>
-          <div className="mt-1 rounded-lg bg-slate-50 p-2 text-sm text-slate-700">
+          <div
+            className={`flex items-center gap-2 duration-200 ${
+              isStudyAudioPlaying && moveIdx > 0 && puzzleMoves[moveIdx - 1]?.audioUrl
+                ? "w-full"
+                : "flex-wrap items-center justify-between gap-y-1"
+            }`}
+          >
+            <div
+              className={`text-sm font-semibold transition-opacity duration-200 ${
+                isStudyAudioPlaying && moveIdx > 0 && puzzleMoves[moveIdx - 1]?.audioUrl
+                  ? "pointer-events-none h-0 overflow-hidden opacity-0"
+                  : ""
+              }`}
+              aria-hidden={isStudyAudioPlaying && Boolean(puzzleMoves[moveIdx - 1]?.audioUrl)}
+            >
+              Tushuntirish
+            </div>
+            {moveIdx > 0 && puzzleMoves[moveIdx - 1]?.audioUrl ? (
+              <audio
+                key={puzzleMoves[moveIdx - 1].audioUrl}
+                controls
+                src={`${API_URL}/uploads/audio/${encodeURIComponent(puzzleMoves[moveIdx - 1].audioUrl!)}`}
+                onPlay={() => setIsStudyAudioPlaying(true)}
+                onPause={() => setIsStudyAudioPlaying(false)}
+                onEnded={() => setIsStudyAudioPlaying(false)}
+                className={`h-8 min-w-0 transition-[width,max-width] duration-200 ${
+                  isStudyAudioPlaying
+                    ? "w-full max-w-none flex-none"
+                    : "max-w-full flex-1 sm:max-w-md"
+                }`}
+              />
+            ) : null}
+          </div>
+          <div
+            className={`overflow-hidden rounded-lg bg-slate-50 text-sm text-slate-700 transition-[margin,max-height,opacity,padding] duration-200 ease-out ${
+              isStudyAudioPlaying && moveIdx > 0 && puzzleMoves[moveIdx - 1]?.audioUrl
+                ? "mt-0 max-h-0 p-0 opacity-0"
+                : "mt-1 max-h-[min(80vh,2000px)] p-2 opacity-100"
+            }`}
+          >
             {moveIdx === 0 ? (
               <div>Birinchi yurishni ko’rsatish uchun “Oldinga” ni bosing.</div>
             ) : (

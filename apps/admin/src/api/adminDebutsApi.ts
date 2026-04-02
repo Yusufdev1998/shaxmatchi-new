@@ -33,12 +33,15 @@ export type Course = { id: string; debutLevelId: string; name: string; createdAt
 export type Module = { id: string; courseId: string; name: string; createdAt: string };
 export type Task = { id: string; moduleId: string; name: string; createdAt: string };
 /** Board overlay for a move’s explanation (stored with the move in JSON). */
+export type PuzzleBoardCircle = { square: string; color?: string };
 export type PuzzleBoardArrow = { startSquare: string; endSquare: string; color?: string };
 export type PuzzleMove = {
   san: string;
   explanation: string;
-  circles?: string[];
+  /** Legacy API responses may still use `string[]` (square names only); normalize when editing. */
+  circles?: PuzzleBoardCircle[] | string[];
   arrows?: PuzzleBoardArrow[];
+  audioUrl?: string;
 };
 export type PuzzleStudentSide = "white" | "black";
 export type Puzzle = {
@@ -68,6 +71,24 @@ export type PuzzleAssignment = {
   assignedAt: string;
   completedAt: string | null;
 };
+
+async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const token = getAuthToken();
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const error = new Error(text || `HTTP ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
+  return (await res.json()) as T;
+}
 
 export const adminDebutsApi = {
   // levels
@@ -198,5 +219,12 @@ export const adminDebutsApi = {
       `/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles/${puzzleId}/assignments/${assignmentId}`,
       { method: "DELETE" },
     ),
+
+  // audio uploads
+  uploadAudio: (file: File) =>
+    apiUpload<{ filename: string }>(`/admin/uploads/audio`, file),
+
+  deleteAudio: (filename: string) =>
+    api<{ ok: true }>(`/admin/uploads/audio/${encodeURIComponent(filename)}`, { method: "DELETE" }),
 };
 
