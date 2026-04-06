@@ -108,6 +108,7 @@ export function ModulesPage() {
       confirmLabel: "O'chirish",
       cancelLabel: "Bekor qilish",
       variant: "danger",
+      requirePassword: true,
     });
     if (!ok) return;
     setError(null);

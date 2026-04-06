@@ -12,7 +12,7 @@ export default defineConfig({
       hosts: ["localhost", "127.0.0.1"],
     }),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
       injectRegister: "auto",
       includeAssets: [
         "icons/icon.svg",

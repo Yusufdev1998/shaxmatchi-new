@@ -5,9 +5,14 @@ import { ShaxTooltipProvider } from "@shaxmatchi/ui";
 import { registerSW } from "virtual:pwa-register";
 import { App } from "./App";
 import { queryClient } from "./queryClient";
+import { setPwaUpdateReady } from "./pwaUpdate";
 import "./index.css";
 
-registerSW({ immediate: true });
+const updateSW = registerSW({
+  onNeedRefresh() {
+    setPwaUpdateReady(() => updateSW(true));
+  },
+});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

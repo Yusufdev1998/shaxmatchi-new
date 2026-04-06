@@ -230,8 +230,6 @@ export function PuzzlesCrudPage() {
   }>({ circles: [], arrows: [] });
   const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
   const [audioUploading, setAudioUploading] = React.useState(false);
-  const [copyVariantId, setCopyVariantId] = React.useState<string>("");
-  const [copyAudioUrl, setCopyAudioUrl] = React.useState<string>("");
   const [copyExplTargetIdx, setCopyExplTargetIdx] = React.useState<number | null>(null);
   const [copyExplVariantId, setCopyExplVariantId] = React.useState<string>("");
   const [copyExplMoveIdx, setCopyExplMoveIdx] = React.useState<string>("");
@@ -439,13 +437,6 @@ export function PuzzlesCrudPage() {
 
   const leaveBlocker = useBlocker(isEditing && editingDirty);
 
-  // Reset copy selectors when the move dialog closes
-  React.useEffect(() => {
-    if (newMoveDialogIdx === null) {
-      setCopyVariantId("");
-      setCopyAudioUrl("");
-    }
-  }, [newMoveDialogIdx]);
 
   React.useEffect(() => {
     if (!isEditing || !editingDirty) return;
@@ -1014,6 +1005,7 @@ export function PuzzlesCrudPage() {
               {newMoveDialogAudio ? (
                 <div className="flex items-center gap-2">
                   <audio
+                    key={newMoveDialogAudio}
                     controls
                     src={`${API_URL}/uploads/audio/${encodeURIComponent(newMoveDialogAudio)}`}
                     className="h-8 max-w-[260px] flex-1"
@@ -1035,6 +1027,13 @@ export function PuzzlesCrudPage() {
                       if (!ok) return;
                       const filename = newMoveDialogAudio;
                       setNewMoveDialogAudio(undefined);
+                      if (newMoveDialogIdx !== null) {
+                        const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: undefined } : x);
+                        setNewMoves(updated);
+                        if (editingPuzzleId) {
+                          void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
+                        }
+                      }
                       if (filename) {
                         void adminDebutsApi.deleteAudio(filename).catch(() => {});
                       }
@@ -1045,87 +1044,6 @@ export function PuzzlesCrudPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Copy audio: step 1 pick variant, step 2 pick move */}
-                  {(() => {
-                    const currentHas = newMoves.some((m, i) => i !== newMoveDialogIdx && m.audioUrl);
-                    const otherVariants = items.filter(
-                      (p) => p.id !== editingPuzzleId && p.moves.some((m) => m.audioUrl),
-                    );
-                    if (!currentHas && otherVariants.length === 0) return null;
-
-                    // Moves for the selected variant
-                    const movesForVariant: { label: string; audioUrl: string }[] =
-                      copyVariantId === "__current__"
-                        ? newMoves
-                            .map((m, i) => ({ m, i }))
-                            .filter(({ m, i }) => i !== newMoveDialogIdx && m.audioUrl)
-                            .map(({ m, i }) => ({
-                              label: `${formatMoveNumber(i)} ${m.san}`,
-                              audioUrl: m.audioUrl!,
-                            }))
-                        : copyVariantId
-                          ? (otherVariants.find((p) => p.id === copyVariantId)?.moves ?? [])
-                              .map((m, i) => ({ m, i }))
-                              .filter(({ m }) => m.audioUrl)
-                              .map(({ m, i }) => ({
-                                label: `${formatMoveNumber(i)} ${m.san}`,
-                                audioUrl: m.audioUrl!,
-                              }))
-                          : [];
-
-                    return (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap gap-2">
-                          {/* Step 1: variant */}
-                          <select
-                            className="min-w-[140px] flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
-                            value={copyVariantId}
-                            onChange={(e) => {
-                              setCopyVariantId(e.target.value);
-                              setCopyAudioUrl("");
-                            }}
-                          >
-                            <option value="">— Variant tanlang —</option>
-                            {currentHas ? (
-                              <option value="__current__">Bu variant</option>
-                            ) : null}
-                            {otherVariants.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-
-                          {/* Step 2: move */}
-                          <select
-                            className="min-w-[140px] flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
-                            value={copyAudioUrl}
-                            disabled={movesForVariant.length === 0}
-                            onChange={(e) => setCopyAudioUrl(e.target.value)}
-                          >
-                            <option value="">— Yurish tanlang —</option>
-                            {movesForVariant.map((opt) => (
-                              <option key={opt.audioUrl} value={opt.audioUrl}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          disabled={!copyAudioUrl}
-                          onClick={() => {
-                            if (copyAudioUrl) setNewMoveDialogAudio(copyAudioUrl);
-                          }}
-                        >
-                          Nusxa olish
-                        </Button>
-                      </div>
-                    );
-                  })()}
                   <AudioRecorder
                     disabled={busy || audioUploading}
                     onRecorded={async (file) => {
@@ -1133,6 +1051,13 @@ export function PuzzlesCrudPage() {
                         setAudioUploading(true);
                         const res = await adminDebutsApi.uploadAudio(file);
                         setNewMoveDialogAudio(res.filename);
+                        if (newMoveDialogIdx !== null) {
+                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
+                          setNewMoves(updated);
+                          if (editingPuzzleId) {
+                            void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
+                          }
+                        }
                       } catch (err) {
                         alert(err instanceof Error ? err.message : "Audio yuklab bo'lmadi");
                       } finally {
@@ -1170,6 +1095,13 @@ export function PuzzlesCrudPage() {
                           setAudioUploading(true);
                           const res = await adminDebutsApi.uploadAudio(file);
                           setNewMoveDialogAudio(res.filename);
+                          if (newMoveDialogIdx !== null) {
+                            const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
+                            setNewMoves(updated);
+                            if (editingPuzzleId) {
+                              void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
+                            }
+                          }
                         } catch (err) {
                           alert(err instanceof Error ? err.message : "Audio yuklab bo'lmadi");
                         } finally {

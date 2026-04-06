@@ -1,9 +1,10 @@
 import * as React from "react";
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@shaxmatchi/ui";
-import { Download, LogOut, Home, Swords } from "lucide-react";
+import { Download, LogOut, Home, Swords, RefreshCw } from "lucide-react";
 import { clearAuthSession, getAuthToken, getAuthUser } from "../auth/auth";
 import { isTelegramMiniApp } from "../auth/telegram";
+import { getPwaUpdateFn, subscribePwaUpdate } from "../pwaUpdate";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -18,6 +19,11 @@ export function AppLayout() {
   const [deferredPrompt, setDeferredPrompt] = React.useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = React.useState(false);
   const inTelegram = isTelegramMiniApp();
+  const [pwaUpdateReady, setPwaUpdateReady] = React.useState(() => !!getPwaUpdateFn());
+
+  React.useEffect(() => {
+    return subscribePwaUpdate(() => setPwaUpdateReady(true));
+  }, []);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -106,6 +112,23 @@ export function AppLayout() {
           </div>
         </div>
       </header>
+
+      {pwaUpdateReady ? (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center">
+          <span className="text-xs text-emerald-800">Yangi versiya mavjud!</span>
+          <Button
+            variant="default"
+            className="ml-2 h-6 px-2 text-xs"
+            onClick={() => {
+              const fn = getPwaUpdateFn();
+              if (fn) fn();
+            }}
+          >
+            <RefreshCw className="mr-1 h-3 w-3" />
+            Yangilash
+          </Button>
+        </div>
+      ) : null}
 
       <main className="mx-auto w-full max-w-md px-4 py-4 sm:max-w-5xl sm:px-6 sm:py-6">
         <Outlet />

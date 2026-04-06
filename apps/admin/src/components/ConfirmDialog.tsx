@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Button } from "@shaxmatchi/ui";
+import { API_URL, getAuthUser } from "../auth/auth";
 
 export type ConfirmDialogOptions = {
   title: string;
@@ -9,6 +10,8 @@ export type ConfirmDialogOptions = {
   /** Confirm button: use danger for destructive actions */
   variant?: "default" | "danger";
   busy?: boolean;
+  /** When true, show a password field and verify before confirming */
+  requirePassword?: boolean;
 };
 
 type ConfirmDialogProps = ConfirmDialogOptions & {
@@ -25,9 +28,21 @@ export function ConfirmDialog({
   cancelLabel = "Bekor qilish",
   variant = "default",
   busy,
+  requirePassword,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const [password, setPassword] = React.useState("");
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
+  const [verifying, setVerifying] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setPassword("");
+    setPasswordError(null);
+    setVerifying(false);
+  }, [open]);
+
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -38,6 +53,37 @@ export function ConfirmDialog({
   }, [open, onCancel]);
 
   if (!open) return null;
+
+  const handleConfirm = async () => {
+    if (requirePassword) {
+      if (!password.trim()) {
+        setPasswordError("Parolni kiriting");
+        return;
+      }
+      setPasswordError(null);
+      setVerifying(true);
+      try {
+        const user = getAuthUser();
+        const res = await fetch(`${API_URL}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ login: user?.login, password }),
+        });
+        if (!res.ok) {
+          setPasswordError("Parol noto'g'ri");
+          return;
+        }
+      } catch {
+        setPasswordError("Tekshirib bo'lmadi");
+        return;
+      } finally {
+        setVerifying(false);
+      }
+    }
+    onConfirm();
+  };
+
+  const isBusy = busy || verifying;
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
@@ -54,16 +100,33 @@ export function ConfirmDialog({
         {description ? (
           <p className="mt-2 text-xs leading-relaxed text-slate-600">{description}</p>
         ) : null}
+        {requirePassword ? (
+          <div className="mt-3">
+            <input
+              type="password"
+              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Parolni kiriting"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setPasswordError(null); }}
+              disabled={isBusy}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleConfirm(); } }}
+              autoFocus
+            />
+            {passwordError ? (
+              <p className="mt-1 text-xs text-red-600">{passwordError}</p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onCancel}>
+          <Button type="button" size="sm" variant="secondary" disabled={isBusy} onClick={onCancel}>
             {cancelLabel}
           </Button>
           <Button
             type="button"
             size="sm"
             variant={variant === "danger" ? "danger" : "default"}
-            disabled={busy}
-            onClick={onConfirm}
+            disabled={isBusy || (requirePassword && !password.trim())}
+            onClick={() => void handleConfirm()}
           >
             {confirmLabel}
           </Button>

@@ -6,9 +6,14 @@ import { registerSW } from "virtual:pwa-register";
 import { App } from "./App";
 import { queryClient } from "./queryClient";
 import { initTelegramMiniApp } from "./auth/telegram";
+import { setPwaUpdateReady } from "./pwaUpdate";
 import "./index.css";
 
-registerSW({ immediate: true });
+const updateSW = registerSW({
+  onNeedRefresh() {
+    setPwaUpdateReady(() => updateSW(true));
+  },
+});
 initTelegramMiniApp();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
