@@ -9,8 +9,14 @@ import { setPwaUpdateReady } from "./pwaUpdate";
 import "./index.css";
 
 const updateSW = registerSW({
+  immediate: true,
   onNeedRefresh() {
     setPwaUpdateReady(() => updateSW(true));
+  },
+  onRegisteredSW(_url, registration) {
+    if (registration) {
+      setInterval(() => { registration.update(); }, 60 * 1000);
+    }
   },
 });
 
