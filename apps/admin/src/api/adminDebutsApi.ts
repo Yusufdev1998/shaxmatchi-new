@@ -1,23 +1,4 @@
-import { API_URL, getAuthToken } from "../auth/auth";
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getAuthToken();
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    const error = new Error(text || `HTTP ${res.status}`) as Error & { status?: number };
-    error.status = res.status;
-    throw error;
-  }
-  return (await res.json()) as T;
-}
+import { apiFetch as api, apiUploadFetch } from "../auth/auth";
 
 function isPracticeLimitNotSupportedError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -71,24 +52,6 @@ export type PuzzleAssignment = {
   assignedAt: string;
   completedAt: string | null;
 };
-
-async function apiUpload<T>(path: string, file: File): Promise<T> {
-  const token = getAuthToken();
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    const error = new Error(text || `HTTP ${res.status}`) as Error & { status?: number };
-    error.status = res.status;
-    throw error;
-  }
-  return (await res.json()) as T;
-}
 
 export const adminDebutsApi = {
   // levels
@@ -222,7 +185,7 @@ export const adminDebutsApi = {
 
   // audio uploads
   uploadAudio: (file: File) =>
-    apiUpload<{ filename: string }>(`/admin/uploads/audio`, file),
+    apiUploadFetch<{ filename: string }>(`/admin/uploads/audio`, file),
 
   deleteAudio: (filename: string) =>
     api<{ ok: true }>(`/admin/uploads/audio/${encodeURIComponent(filename)}`, { method: "DELETE" }),

@@ -1,21 +1,4 @@
-import { API_URL, getAuthToken } from "../auth/auth";
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getAuthToken();
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  return (await res.json()) as T;
-}
+import { apiFetch as api } from "../auth/auth";
 
 /** One o'rganish tayinlovi: variant + o'quvchi + jami vaqt. */
 export type LearningPuzzleStatRow = {
