@@ -63,7 +63,7 @@ function summarizeFrames(frames: number[][]): number[] {
 
 export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
   const [state, setState] = React.useState<
-    "idle" | "recording" | "recorded" | "playing"
+    "idle" | "recording" | "paused" | "recorded" | "playing"
   >("idle");
   const [elapsed, setElapsed] = React.useState(0);
   const [blob, setBlob] = React.useState<Blob | null>(null);
@@ -80,6 +80,8 @@ export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
   const streamRef = React.useRef<MediaStream | null>(null);
   const recordedBarsRef = React.useRef<number[][]>([]);
   const summaryBarsRef = React.useRef<number[]>([]);
+  const elapsedBeforePauseRef = React.useRef<number>(0);
+  const segmentStartRef = React.useRef<number>(0);
 
   const revokeBlobUrl = React.useCallback(() => {
     setBlobUrl((prev) => {
@@ -185,9 +187,10 @@ export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
       recorder.start(100);
       setState("recording");
 
-      const startTime = Date.now();
+      elapsedBeforePauseRef.current = 0;
+      segmentStartRef.current = Date.now();
       timerRef.current = window.setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTime) / 1000));
+        setElapsed(Math.floor((elapsedBeforePauseRef.current + (Date.now() - segmentStartRef.current)) / 1000));
       }, 250);
 
       animFrameRef.current = requestAnimationFrame(drawLive);
@@ -201,6 +204,28 @@ export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
     cancelAnimationFrame(animFrameRef.current);
     mediaRecorderRef.current?.stop();
   }, []);
+
+  const pauseRecording = React.useCallback(() => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.pause();
+      clearInterval(timerRef.current);
+      cancelAnimationFrame(animFrameRef.current);
+      elapsedBeforePauseRef.current += Date.now() - segmentStartRef.current;
+      setState("paused");
+    }
+  }, []);
+
+  const resumeRecording = React.useCallback(() => {
+    if (mediaRecorderRef.current?.state === "paused") {
+      mediaRecorderRef.current.resume();
+      segmentStartRef.current = Date.now();
+      timerRef.current = window.setInterval(() => {
+        setElapsed(Math.floor((elapsedBeforePauseRef.current + (Date.now() - segmentStartRef.current)) / 1000));
+      }, 250);
+      animFrameRef.current = requestAnimationFrame(drawLive);
+      setState("recording");
+    }
+  }, [drawLive]);
 
   const playRecorded = React.useCallback(() => {
     const audio = audioRef.current;
@@ -294,7 +319,7 @@ export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
             <Mic className="h-3.5 w-3.5" />
             Yozish
           </Button>
-        ) : state === "recording" ? (
+        ) : state === "recording" || state === "paused" ? (
           <>
             <Button
               type="button"
@@ -307,9 +332,33 @@ export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
               <Square className="h-3 w-3" />
               To'xtatish
             </Button>
+            {state === "recording" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={pauseRecording}
+                title="Pauza"
+                className="gap-1.5"
+              >
+                <Pause className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={resumeRecording}
+                title="Davom ettirish"
+                className="gap-1.5"
+              >
+                <Mic className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <span className="flex items-center gap-1.5 text-xs tabular-nums text-red-600">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
+              <span className={`inline-block h-2 w-2 rounded-full bg-red-500 ${state === "recording" ? "animate-pulse" : ""}`} />
               {mm}:{ss}
+              {state === "paused" ? <span className="text-slate-500">pauzada</span> : null}
             </span>
           </>
         ) : (

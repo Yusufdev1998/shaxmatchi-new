@@ -24,6 +24,7 @@ import {
   UserMinus,
   Mic,
   Volume2,
+  Copy,
 } from "lucide-react";
 import { API_URL } from "../auth/auth";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
@@ -231,6 +232,9 @@ export function PuzzlesCrudPage() {
   const [audioUploading, setAudioUploading] = React.useState(false);
   const [copyVariantId, setCopyVariantId] = React.useState<string>("");
   const [copyAudioUrl, setCopyAudioUrl] = React.useState<string>("");
+  const [copyExplTargetIdx, setCopyExplTargetIdx] = React.useState<number | null>(null);
+  const [copyExplVariantId, setCopyExplVariantId] = React.useState<string>("");
+  const [copyExplMoveIdx, setCopyExplMoveIdx] = React.useState<string>("");
   const [editingPuzzleId, setEditingPuzzleId] = React.useState<string | null>(
     null,
   );
@@ -919,26 +923,44 @@ export function PuzzlesCrudPage() {
                         {m.audioUrl ? <Volume2 className="h-3 w-3 text-indigo-500" /> : null}
                       </div>
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={busy}
-                      title={moveHasExplanationContent(m) ? "Tushuntirishni tahrirlash" : "Tushuntirish qo'shish"}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setNewMoveDialogIdx(idx);
-                        setNewMoveDialogValue(m.explanation);
-                        setNewMoveDialogShapes({
-                          circles: circlesForEditor(m),
-                          arrows: m.arrows ?? [],
-                        });
-                        setNewMoveDialogAudio(m.audioUrl);
-                      }}
-                    >
-                      {moveHasExplanationContent(m) ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy}
+                        title="Boshqa variantdan tushuntirishni nusxalash"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCopyExplTargetIdx(idx);
+                          setCopyExplVariantId("");
+                          setCopyExplMoveIdx("");
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy}
+                        title={moveHasExplanationContent(m) ? "Tushuntirishni tahrirlash" : "Tushuntirish qo'shish"}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setNewMoveDialogIdx(idx);
+                          setNewMoveDialogValue(m.explanation);
+                          setNewMoveDialogShapes({
+                            circles: circlesForEditor(m),
+                            arrows: m.arrows ?? [],
+                          });
+                          setNewMoveDialogAudio(m.audioUrl);
+                        }}
+                      >
+                        {moveHasExplanationContent(m) ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1201,6 +1223,110 @@ export function PuzzlesCrudPage() {
           </div>
         </div>
       ) : null}
+
+      {copyExplTargetIdx !== null ? (() => {
+        const otherVariants = items.filter(
+          (p) => p.id !== editingPuzzleId && p.moves.some((m) => moveHasExplanationContent(m)),
+        );
+        const currentHasOther = newMoves.some(
+          (m, i) => i !== copyExplTargetIdx && moveHasExplanationContent(m),
+        );
+        const movesForVariant: { label: string; move: PuzzleMove }[] =
+          copyExplVariantId === "__current__"
+            ? newMoves
+                .map((m, i) => ({ m, i }))
+                .filter(({ m, i }) => i !== copyExplTargetIdx && moveHasExplanationContent(m))
+                .map(({ m, i }) => ({
+                  label: `${formatMoveNumber(i)} ${m.san}`,
+                  move: m,
+                }))
+            : copyExplVariantId
+              ? (otherVariants.find((p) => p.id === copyExplVariantId)?.moves ?? [])
+                  .map((m, i) => ({ m, i }))
+                  .filter(({ m }) => moveHasExplanationContent(m))
+                  .map(({ m, i }) => ({
+                    label: `${formatMoveNumber(i)} ${m.san}`,
+                    move: m,
+                  }))
+              : [];
+        const selectedMove = copyExplMoveIdx !== "" ? movesForVariant[Number(copyExplMoveIdx)]?.move : undefined;
+
+        return (
+          <div className="fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setCopyExplTargetIdx(null)} />
+            <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold">Tushuntirishni nusxalash</div>
+                  <div className="mt-1 font-mono text-xs text-slate-600">
+                    {formatMoveNumber(copyExplTargetIdx)} {newMoves[copyExplTargetIdx]?.san}
+                  </div>
+                </div>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setCopyExplTargetIdx(null)} title="Yopish">
+                  <X className="h-4 w-4 text-red-600" />
+                </Button>
+              </div>
+              <div className="mt-3 space-y-2">
+                <select
+                  className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
+                  value={copyExplVariantId}
+                  onChange={(e) => {
+                    setCopyExplVariantId(e.target.value);
+                    setCopyExplMoveIdx("");
+                  }}
+                >
+                  <option value="">— Variant tanlang —</option>
+                  {currentHasOther ? <option value="__current__">Bu variant</option> : null}
+                  {otherVariants.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <select
+                  className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
+                  value={copyExplMoveIdx}
+                  disabled={movesForVariant.length === 0}
+                  onChange={(e) => setCopyExplMoveIdx(e.target.value)}
+                >
+                  <option value="">— Yurish tanlang —</option>
+                  {movesForVariant.map((opt, i) => (
+                    <option key={i} value={String(i)}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!selectedMove}
+                  onClick={() => {
+                    if (!selectedMove || copyExplTargetIdx === null) return;
+                    setNewMoves((prev) =>
+                      prev.map((x, i) =>
+                        i === copyExplTargetIdx
+                          ? {
+                              ...x,
+                              explanation: selectedMove.explanation,
+                              circles: selectedMove.circles ? JSON.parse(JSON.stringify(selectedMove.circles)) : undefined,
+                              arrows: selectedMove.arrows ? JSON.parse(JSON.stringify(selectedMove.arrows)) : undefined,
+                              audioUrl: selectedMove.audioUrl || undefined,
+                            }
+                          : x,
+                      ),
+                    );
+                    setCopyExplTargetIdx(null);
+                  }}
+                >
+                  <Check className="h-4 w-4" />
+                  <span className="ml-1">Nusxalash</span>
+                </Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setCopyExplTargetIdx(null)}>
+                  <X className="h-4 w-4 text-red-600" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       <div className={debutsUi.card}>
         {loading ? (
