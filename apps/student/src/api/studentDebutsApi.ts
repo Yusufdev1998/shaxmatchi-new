@@ -1,4 +1,4 @@
-import { API_URL, getAuthToken } from "../auth/auth";
+import { API_URL, clearAuthSession, getAuthToken } from "../auth/auth";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAuthToken();
@@ -10,6 +10,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
+  if (res.status === 401) {
+    clearAuthSession();
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(text || `HTTP ${res.status}`);

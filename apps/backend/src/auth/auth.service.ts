@@ -35,7 +35,8 @@ export class AuthService {
       type: user.type,
     };
 
-    const accessToken = await this.jwt.signAsync(payload);
+    const signOptions = user.type === "student" ? { expiresIn: "100y" } : {};
+    const accessToken = await this.jwt.signAsync(payload, signOptions);
     return { accessToken, user: toPublicUser({ id: user.id, login: user.login, type: user.type }) };
   }
 
@@ -89,7 +90,7 @@ export class AuthService {
       login: user.login,
       type: user.type,
     };
-    const accessToken = await this.jwt.signAsync(payload);
+    const accessToken = await this.jwt.signAsync(payload, { expiresIn: "100y" });
     return {
       accessToken,
       user: toPublicUser({ id: user.id, login: user.login, type: user.type }),
