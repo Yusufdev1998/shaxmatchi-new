@@ -50,6 +50,8 @@ export type PuzzleAssignment = {
   practiceFailureProgressSum: number;
   /** Total seconds in o'rganish (study + repeat) for this assignment. */
   learningSecondsTotal: number;
+  /** Absolute deadline timestamp (ISO) for study-mode assignments (null otherwise). */
+  dueAt: string | null;
   assignedAt: string;
   completedAt: string | null;
 };
@@ -160,7 +162,7 @@ export const adminDebutsApi = {
     moduleId: string,
     taskId: string,
     puzzleId: string,
-    input: { studentId: string; mode: PuzzleAssignmentMode; practiceLimit?: number },
+    input: { studentId: string; mode: PuzzleAssignmentMode; practiceLimit?: number; dueInHours?: number },
   ) =>
     (async () => {
       const path = `/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles/${puzzleId}/assignments`;

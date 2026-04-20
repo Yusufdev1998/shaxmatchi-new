@@ -37,6 +37,8 @@ export type StudentPuzzleAssignment = {
   practiceSuccessCount: number;
   /** Total seconds spent in o'rganish (study + repeat), assignment mode `new` only. */
   learningSecondsTotal: number;
+  /** Absolute deadline timestamp (ISO) for study-mode assignments (null otherwise). */
+  dueAt: string | null;
   assignedAt: string;
   completedAt: string | null;
 };
@@ -72,6 +74,7 @@ export type StudentPuzzleDetail = {
   practiceAttemptsUsed: number;
   practiceSuccessCount: number;
   learningSecondsTotal: number;
+  dueAt: string | null;
 };
 
 export type ConsumePracticeAttemptResult = {

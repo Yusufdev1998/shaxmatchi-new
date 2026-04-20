@@ -143,6 +143,8 @@ export const puzzleAssignments = pgTable(
     practiceFailureProgressSum: integer("practice_failure_progress_sum").notNull().default(0),
     /** Cumulative seconds in o'rganish (study + repeat) for this assignment; mode `new` only. */
     learningSecondsTotal: integer("learning_seconds_total").notNull().default(0),
+    /** Optional deadline timestamp for study-mode assignments (computed from hours-ahead). */
+    dueAt: timestamp("due_at", { withTimezone: true }),
     assignedAt: timestamp("assigned_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

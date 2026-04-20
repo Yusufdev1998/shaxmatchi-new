@@ -6,5 +6,6 @@ import { TelegramBotService } from "./telegram-bot.service";
 @Module({
   imports: [ConfigModule, UsersModule],
   providers: [TelegramBotService],
+  exports: [TelegramBotService],
 })
 export class TelegramModule {}

@@ -85,6 +85,20 @@
       "when": 1776676116626,
       "tag": "0011_light_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1776690493404,
+      "tag": "0012_peaceful_bullseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1776691787361,
+      "tag": "0013_wealthy_dark_beast",
+      "breakpoints": true
     }
   ]
 }

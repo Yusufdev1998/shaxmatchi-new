@@ -1,0 +1,1 @@
+ALTER TABLE "puzzle_assignments" ADD COLUMN "due_at" date;

@@ -439,6 +439,16 @@ export function PuzzlePage() {
     practiceAttemptsUsed !== null &&
     practiceAttemptsUsed >= practiceLimit;
 
+  const remainingDueLabel = React.useMemo(() => {
+    if (!puzzle?.dueAt) return null;
+    const diffMs = new Date(puzzle.dueAt).getTime() - Date.now();
+    if (diffMs <= 0) return "⏰ muddati o'tgan";
+    const hours = Math.ceil(diffMs / 3600000);
+    if (hours < 48) return `⏰ ${hours} soat`;
+    const days = Math.ceil(hours / 24);
+    return `⏰ ${days} kun`;
+  }, [puzzle?.dueAt]);
+
   useStudentPageHeader(
     puzzle
       ? {
@@ -447,7 +457,9 @@ export function PuzzlePage() {
           meta:
             puzzle.mode === "test" && practiceAttemptsUsed !== null
               ? `${practiceAttemptsUsed}${practiceLimit !== null ? `/${practiceLimit}` : ""}`
-              : undefined,
+              : puzzle.mode === "new" && remainingDueLabel
+                ? remainingDueLabel
+                : undefined,
           backTo: "/debut",
         }
       : null,

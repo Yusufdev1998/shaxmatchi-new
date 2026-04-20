@@ -54,6 +54,14 @@ function formatMoveNumber(idx: number) {
   return isWhite ? `${moveNo}.` : `${moveNo}...`;
 }
 
+/** ISO deadline → hours remaining (rounded up, min 1). Empty string if past or absent. */
+function hoursRemainingFromIso(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const diffMs = new Date(iso).getTime() - Date.now();
+  if (diffMs <= 0) return "";
+  return String(Math.max(1, Math.ceil(diffMs / 3600000)));
+}
+
 function assignmentModeLabel(mode: PuzzleAssignmentMode): string {
   return mode === "test" ? "mashq" : "o'rganish";
 }
@@ -257,6 +265,7 @@ export function PuzzlesCrudPage() {
     React.useState<PuzzleAssignmentMode>("new");
   const [assignPracticeLimit, setAssignPracticeLimit] =
     React.useState<string>("");
+  const [assignDueInHours, setAssignDueInHours] = React.useState<string>("");
   const [assignError, setAssignError] = React.useState<string | null>(null);
   const [assignSuccess, setAssignSuccess] = React.useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -385,6 +394,7 @@ export function PuzzlesCrudPage() {
         practiceSuccessCount: number;
         practiceFailureProgressSum: number;
         learningSecondsTotal: number;
+        dueAt: string | null;
         assignedAt: string;
         completedAt: string | null;
       }
@@ -442,6 +452,7 @@ export function PuzzlesCrudPage() {
       const existing = assignmentsByStudentId.get(firstId);
       setAssignMode(existing?.mode ?? "new");
       setAssignPracticeLimit(existing?.practiceLimit ? String(existing.practiceLimit) : "");
+      setAssignDueInHours(hoursRemainingFromIso(existing?.dueAt));
     }
   }, [assignOpenForPuzzleId, assignStudentId, students, assignmentsByStudentId]);
 
@@ -691,6 +702,7 @@ export function PuzzlesCrudPage() {
       studentId: string;
       mode: PuzzleAssignmentMode;
       practiceLimit?: number;
+      dueInHours?: number;
     }) =>
       adminDebutsApi.assignPuzzleToStudent(
         levelIdSafe,
@@ -698,7 +710,12 @@ export function PuzzlesCrudPage() {
         moduleIdSafe,
         taskIdSafe,
         input.puzzleId,
-        { studentId: input.studentId, mode: input.mode, practiceLimit: input.practiceLimit },
+        {
+          studentId: input.studentId,
+          mode: input.mode,
+          practiceLimit: input.practiceLimit,
+          dueInHours: input.dueInHours,
+        },
       ),
     onSuccess: async (_, vars) => {
       await queryClient.invalidateQueries({
@@ -759,6 +776,7 @@ export function PuzzlesCrudPage() {
       if (selectedAssignment?.id === assignmentId) {
         setAssignMode("new");
         setAssignPracticeLimit("");
+        setAssignDueInHours("");
       }
     } catch (e) {
       setAssignError(e instanceof Error ? e.message : "Tayinlovni bekor qilib bo'lmadi");
@@ -1471,6 +1489,7 @@ export function PuzzlesCrudPage() {
                     setAssignError(null);
                     setAssignMode("new");
                     setAssignPracticeLimit("");
+                    setAssignDueInHours("");
                     setAssignStudentId("");
                     setAssignOpenForPuzzleId(target.id);
                   }}
@@ -1549,6 +1568,7 @@ export function PuzzlesCrudPage() {
                         const existing = id ? assignmentsByStudentId.get(id) : null;
                         setAssignMode(existing?.mode ?? "new");
                         setAssignPracticeLimit(existing?.practiceLimit ? String(existing.practiceLimit) : "");
+                        setAssignDueInHours(hoursRemainingFromIso(existing?.dueAt));
                       }}
                       disabled={assignBusy}
                     >
@@ -1620,7 +1640,28 @@ export function PuzzlesCrudPage() {
                       Bo'sh qoldirilsa, mashq urinishlari cheklanmaydi.
                     </span>
                   </label>
-                ) : null}
+                ) : (
+                  <label className="mt-3 grid gap-1">
+                    <span className="text-xs font-medium text-slate-700">
+                      Muddat — necha soatdan keyin (ixtiyoriy)
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={24 * 365}
+                      step={1}
+                      inputMode="numeric"
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-400"
+                      value={assignDueInHours}
+                      onChange={(e) => setAssignDueInHours(e.target.value)}
+                      disabled={assignBusy || !assignStudentId}
+                      placeholder="Masalan, 24"
+                    />
+                    <span className="text-xs text-slate-500">
+                      Bo'sh qoldirilsa, muddat belgilanmaydi. Tayinlash vaqtidan boshlab hisoblanadi.
+                    </span>
+                  </label>
+                )}
 
                 {students.length > 0 ? (
                   <div className="mt-3 max-h-52 overflow-auto rounded-lg border border-slate-200">
@@ -1645,6 +1686,7 @@ export function PuzzlesCrudPage() {
                               setAssignStudentId(s.id);
                               setAssignMode(a?.mode ?? "new");
                               setAssignPracticeLimit(a?.practiceLimit ? String(a.practiceLimit) : "");
+                              setAssignDueInHours(hoursRemainingFromIso(a?.dueAt));
                             }}
                             onKeyDown={(e) => {
                               if (assignBusy) return;
@@ -1653,6 +1695,7 @@ export function PuzzlesCrudPage() {
                                 setAssignStudentId(s.id);
                                 setAssignMode(a?.mode ?? "new");
                                 setAssignPracticeLimit(a?.practiceLimit ? String(a.practiceLimit) : "");
+                                setAssignDueInHours(hoursRemainingFromIso(a?.dueAt));
                               }
                             }}
                             aria-disabled={assignBusy ? "true" : "false"}
@@ -1742,11 +1785,24 @@ export function PuzzlesCrudPage() {
                         practiceLimit = parsed;
                       }
                     }
+                    let dueInHours: number | undefined;
+                    if (assignMode === "new") {
+                      const raw = assignDueInHours.trim();
+                      if (raw.length > 0) {
+                        const parsed = Number(raw);
+                        if (!Number.isInteger(parsed) || parsed < 1) {
+                          setAssignError("Muddat 1 yoki undan katta butun son bo'lishi kerak.");
+                          return;
+                        }
+                        dueInHours = parsed;
+                      }
+                    }
                     await assignPuzzleMutation.mutateAsync({
                       puzzleId,
                       studentId: assignStudentId,
                       mode: assignMode,
                       practiceLimit,
+                      dueInHours,
                     });
                     setAssignSuccess("Variant muvaffaqiyatli tayinlandi.");
                     setAssignOpenForPuzzleId(null);

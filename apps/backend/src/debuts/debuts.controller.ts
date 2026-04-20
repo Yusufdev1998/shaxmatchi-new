@@ -218,6 +218,7 @@ export class DebutsController {
       studentId: dto.studentId,
       mode: dto.mode,
       practiceLimit: dto.practiceLimit ?? null,
+      dueInHours: dto.dueInHours ?? null,
     });
   }
 

@@ -1,17 +1,27 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { Cron, CronExpression } from "@nestjs/schedule";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import { courses, debutLevels, modules, puzzleAssignments, puzzles, tasks, users } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
+import { TelegramBotService } from "../telegram/telegram-bot.service";
+
+/** When a study assignment's deadline expires, we flip it to practice with this many attempts. */
+const STUDY_EXPIRY_PRACTICE_LIMIT = 10;
 
 @Injectable()
 export class DebutsService {
-  constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb | null) {}
+  private readonly logger = new Logger(DebutsService.name);
+  constructor(
+    @Inject(DRIZZLE_DB) private readonly db: DrizzleDb | null,
+    private readonly telegramBot: TelegramBotService,
+  ) {}
 
   private getDb(): DrizzleDb {
     if (!this.db) throw new ServiceUnavailableException("Database is not configured");
@@ -333,12 +343,13 @@ export class DebutsService {
     studentId: string;
     mode: "new" | "test";
     practiceLimit: number | null;
+    dueInHours: number | null;
   }) {
     const db = this.getDb();
-    await this.getPuzzle(input.levelId, input.courseId, input.moduleId, input.taskId, input.puzzleId);
+    const puzzle = await this.getPuzzle(input.levelId, input.courseId, input.moduleId, input.taskId, input.puzzleId);
 
     const studentRows = await db
-      .select({ id: users.id, type: users.type })
+      .select({ id: users.id, type: users.type, telegramId: users.telegramId })
       .from(users)
       .where(eq(users.id, input.studentId))
       .limit(1);
@@ -352,6 +363,12 @@ export class DebutsService {
       .limit(1);
     const existing = existingRows[0];
 
+    const dueAtForMode: Date | null =
+      input.mode === "new" && input.dueInHours && input.dueInHours > 0
+        ? new Date(Date.now() + input.dueInHours * 3600 * 1000)
+        : null;
+
+    let assignment;
     if (existing) {
       const rows = await db
         .update(puzzleAssignments)
@@ -363,28 +380,149 @@ export class DebutsService {
           practiceSuccessCount: 0,
           practiceFailureProgressSum: 0,
           learningSecondsTotal: 0,
+          dueAt: dueAtForMode,
           assignedAt: new Date(),
           completedAt: null,
         })
         .where(eq(puzzleAssignments.id, existing.id))
         .returning();
-      return rows[0]!;
+      assignment = rows[0]!;
+    } else {
+      const rows = await db
+        .insert(puzzleAssignments)
+        .values({
+          puzzleId: input.puzzleId,
+          teacherId: input.teacherId,
+          studentId: input.studentId,
+          mode: input.mode,
+          practiceLimit: input.mode === "test" ? input.practiceLimit : null,
+          practiceAttemptsUsed: 0,
+          practiceSuccessCount: 0,
+          practiceFailureProgressSum: 0,
+          dueAt: dueAtForMode,
+        })
+        .returning();
+      assignment = rows[0]!;
     }
 
-    const rows = await db
-      .insert(puzzleAssignments)
-      .values({
-        puzzleId: input.puzzleId,
-        teacherId: input.teacherId,
-        studentId: input.studentId,
-        mode: input.mode,
-        practiceLimit: input.mode === "test" ? input.practiceLimit : null,
+    if (student.telegramId) {
+      const isPractice = input.mode === "test";
+      const modeEmoji = isPractice ? "🎯" : "📖";
+      const modeLabel = isPractice ? "Mashq" : "O'rganish";
+      const headerEmoji = isPractice ? "🎯" : "📘";
+      const deadlineLine =
+        dueAtForMode && input.dueInHours
+          ? `⏰ Muddat: ${input.dueInHours} soat ichida\n`
+          : "";
+      const message =
+        `${headerEmoji} Sizga yangi variant tayinlandi\n\n` +
+        `Nomi: ${puzzle.name}\n` +
+        `Rejim: ${modeEmoji} ${modeLabel}\n` +
+        deadlineLine +
+        `\nShaxmatchini ochib mashg'ulotni boshlang.`;
+
+      const spokenDeadline =
+        dueAtForMode && input.dueInHours ? ` Muddat: ${input.dueInHours} soat ichida.` : "";
+      const spokenText =
+        `Sizga yangi variant tayinlandi. Nomi: ${puzzle.name}. Rejim: ${modeLabel}.` +
+        spokenDeadline +
+        ` Shaxmatchini ochib mashg'ulotni boshlang.`;
+
+      const studentTelegramId = student.telegramId;
+      const studentId = input.studentId;
+      void (async () => {
+        const voiceSent = await this.telegramBot.sendSpokenMessage(
+          studentTelegramId,
+          spokenText,
+          { caption: message },
+        );
+        if (!voiceSent) {
+          await this.telegramBot.sendMessage(studentTelegramId, message).catch((err) => {
+            this.logger.warn(
+              `assignPuzzle notify fallback failed (student=${studentId}): ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
+      })();
+    }
+
+    return assignment;
+  }
+
+  /**
+   * Every 5 minutes, flip study-mode assignments whose deadline has passed to
+   * practice mode with a default attempts limit, and notify each student.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async sweepExpiredStudyAssignments(): Promise<void> {
+    if (!this.db) return;
+    const db = this.getDb();
+    const now = new Date();
+
+    const expired = await db
+      .select({
+        assignmentId: puzzleAssignments.id,
+        studentId: puzzleAssignments.studentId,
+        puzzleName: puzzles.name,
+        studentTelegramId: users.telegramId,
+      })
+      .from(puzzleAssignments)
+      .innerJoin(puzzles, eq(puzzles.id, puzzleAssignments.puzzleId))
+      .innerJoin(users, eq(users.id, puzzleAssignments.studentId))
+      .where(
+        and(
+          eq(puzzleAssignments.mode, "new"),
+          isNotNull(puzzleAssignments.dueAt),
+          lte(puzzleAssignments.dueAt, now),
+          isNull(puzzleAssignments.completedAt),
+        ),
+      );
+
+    if (expired.length === 0) return;
+
+    const ids = expired.map((r) => r.assignmentId);
+    await db
+      .update(puzzleAssignments)
+      .set({
+        mode: "test",
+        practiceLimit: STUDY_EXPIRY_PRACTICE_LIMIT,
         practiceAttemptsUsed: 0,
         practiceSuccessCount: 0,
         practiceFailureProgressSum: 0,
+        dueAt: null,
+        assignedAt: now,
       })
-      .returning();
-    return rows[0]!;
+      .where(inArray(puzzleAssignments.id, ids));
+
+    this.logger.log(`Flipped ${expired.length} study assignment(s) to practice mode after deadline.`);
+
+    for (const row of expired) {
+      if (!row.studentTelegramId) continue;
+      const message =
+        `🎯 O'rganish muddati tugadi\n\n` +
+        `Nomi: ${row.puzzleName}\n` +
+        `Rejim: 🎯 Mashq\n` +
+        `Urinishlar: ${STUDY_EXPIRY_PRACTICE_LIMIT}\n\n` +
+        `Shaxmatchini ochib mashq qilishni boshlang.`;
+      const spokenText =
+        `O'rganish muddati tugadi. Nomi: ${row.puzzleName}. Endi mashq rejimiga o'tdingiz. ` +
+        `Sizda ${STUDY_EXPIRY_PRACTICE_LIMIT} ta urinish bor. Shaxmatchini ochib mashq qilishni boshlang.`;
+
+      const telegramId = row.studentTelegramId;
+      const studentId = row.studentId;
+      void (async () => {
+        const voiceSent = await this.telegramBot.sendSpokenMessage(telegramId, spokenText, {
+          caption: message,
+        });
+        if (!voiceSent) {
+          await this.telegramBot.sendMessage(telegramId, message).catch((err) => {
+            this.logger.warn(
+              `sweepExpiredStudyAssignments notify fallback failed (student=${studentId}): ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
+      })();
+    }
   }
 
   async listPuzzleAssignments(input: {
@@ -410,6 +548,7 @@ export class DebutsService {
         practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
         practiceFailureProgressSum: puzzleAssignments.practiceFailureProgressSum,
         learningSecondsTotal: puzzleAssignments.learningSecondsTotal,
+        dueAt: puzzleAssignments.dueAt,
         assignedAt: puzzleAssignments.assignedAt,
         completedAt: puzzleAssignments.completedAt,
       })

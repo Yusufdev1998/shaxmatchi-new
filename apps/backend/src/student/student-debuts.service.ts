@@ -60,6 +60,7 @@ export class StudentDebutsService {
         assignmentPracticeAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
         assignmentPracticeSuccessCount: puzzleAssignments.practiceSuccessCount,
         assignmentLearningSecondsTotal: puzzleAssignments.learningSecondsTotal,
+        assignmentDueAt: puzzleAssignments.dueAt,
         assignmentAssignedAt: puzzleAssignments.assignedAt,
         assignmentCompletedAt: puzzleAssignments.completedAt,
       })
@@ -90,6 +91,7 @@ export class StudentDebutsService {
         practiceAttemptsUsed: number;
         practiceSuccessCount: number;
         learningSecondsTotal: number;
+        dueAt: Date | null;
         assignedAt: Date;
         completedAt: Date | null;
       };
@@ -165,6 +167,7 @@ export class StudentDebutsService {
           practiceAttemptsUsed: r.assignmentPracticeAttemptsUsed ?? 0,
           practiceSuccessCount: r.assignmentPracticeSuccessCount ?? 0,
           learningSecondsTotal: r.assignmentLearningSecondsTotal ?? 0,
+          dueAt: r.assignmentDueAt ?? null,
           assignedAt: r.assignmentAssignedAt,
           completedAt: r.assignmentCompletedAt ?? null,
         },
@@ -343,6 +346,7 @@ export class StudentDebutsService {
         practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
         practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
         learningSecondsTotal: puzzleAssignments.learningSecondsTotal,
+        dueAt: puzzleAssignments.dueAt,
         assignedAt: puzzleAssignments.assignedAt,
         completedAt: puzzleAssignments.completedAt,
       })
@@ -370,6 +374,7 @@ export class StudentDebutsService {
         practiceAttemptsUsed: r.practiceAttemptsUsed ?? 0,
         practiceSuccessCount: r.practiceSuccessCount ?? 0,
         learningSecondsTotal: r.learningSecondsTotal ?? 0,
+        dueAt: r.dueAt ?? null,
         assignedAt: r.assignedAt!,
         completedAt: r.completedAt ?? null,
       },
@@ -387,6 +392,7 @@ export class StudentDebutsService {
         practiceAttemptsUsed: puzzleAssignments.practiceAttemptsUsed,
         practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
         learningSecondsTotal: puzzleAssignments.learningSecondsTotal,
+        dueAt: puzzleAssignments.dueAt,
       })
       .from(puzzleAssignments)
       .where(and(eq(puzzleAssignments.puzzleId, input.puzzleId), eq(puzzleAssignments.studentId, input.studentId)))
@@ -419,6 +425,7 @@ export class StudentDebutsService {
       practiceAttemptsUsed: assignment.practiceAttemptsUsed ?? 0,
       practiceSuccessCount: assignment.practiceSuccessCount ?? 0,
       learningSecondsTotal: assignment.learningSecondsTotal ?? 0,
+      dueAt: assignment.dueAt ?? null,
     };
   }
 
