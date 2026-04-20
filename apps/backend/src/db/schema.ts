@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   jsonb,
   pgEnum,
@@ -154,3 +155,15 @@ export const puzzleAssignments = pgTable(
 
 export type PuzzleAssignment = typeof puzzleAssignments.$inferSelect;
 export type NewPuzzleAssignment = typeof puzzleAssignments.$inferInsert;
+
+export const appSettings = pgTable("app_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  audioAutoplay: boolean("audio_autoplay").notNull().default(true),
+  audioDelaySeconds: integer("audio_delay_seconds").notNull().default(5),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type AppSettings = typeof appSettings.$inferSelect;
+export type NewAppSettings = typeof appSettings.$inferInsert;

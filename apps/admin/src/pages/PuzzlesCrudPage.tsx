@@ -232,8 +232,6 @@ export function PuzzlesCrudPage() {
     arrows: PuzzleBoardArrow[];
   }>({ circles: [], arrows: [] });
   const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
-  const [newMoveDialogAudioDelay, setNewMoveDialogAudioDelay] = React.useState<number>(5);
-  const [newMoveDialogAudioAutoplay, setNewMoveDialogAudioAutoplay] = React.useState<boolean>(true);
   const [audioUploading, setAudioUploading] = React.useState(false);
   const [copyExplTargetIdx, setCopyExplTargetIdx] = React.useState<number | null>(null);
   const [copyExplVariantId, setCopyExplVariantId] = React.useState<string>("");
@@ -497,8 +495,6 @@ export function PuzzlesCrudPage() {
     setNewMoveDialogValue("");
     setNewMoveDialogShapes({ circles: [], arrows: [] });
     setNewMoveDialogAudio(undefined);
-    setNewMoveDialogAudioDelay(5);
-    setNewMoveDialogAudioAutoplay(true);
   }
 
   function startEdit(p: Puzzle) {
@@ -1068,12 +1064,6 @@ export function PuzzlesCrudPage() {
                             arrows: m.arrows ?? [],
                           });
                           setNewMoveDialogAudio(m.audioUrl);
-                          setNewMoveDialogAudioDelay(
-                            typeof m.audioDelaySeconds === "number" ? m.audioDelaySeconds : 5,
-                          );
-                          setNewMoveDialogAudioAutoplay(
-                            typeof m.audioAutoplay === "boolean" ? m.audioAutoplay : true,
-                          );
                         }}
                       >
                         {moveHasExplanationContent(m) ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -1130,80 +1120,44 @@ export function PuzzlesCrudPage() {
                 Audio tushuntirish
               </div>
               {newMoveDialogAudio ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <audio
-                      key={newMoveDialogAudio}
-                      controls
-                      src={`${API_URL}/uploads/audio/${encodeURIComponent(newMoveDialogAudio)}`}
-                      className="h-8 max-w-[260px] flex-1"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      disabled={busy || audioUploading}
-                      title="Audioni o'chirish"
-                      onClick={async () => {
-                        const ok = await confirm({
-                          title: "Audioni o'chirish",
-                          description: "Audio tushuntirishni o'chirasizmi?",
-                          confirmLabel: "O'chirish",
-                          cancelLabel: "Bekor qilish",
-                          variant: "danger",
-                        });
-                        if (!ok) return;
-                        const filename = newMoveDialogAudio;
-                        setNewMoveDialogAudio(undefined);
-                        setNewMoveDialogAudioDelay(5);
-                        setNewMoveDialogAudioAutoplay(true);
-                        if (newMoveDialogIdx !== null) {
-                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: undefined, audioDelaySeconds: undefined, audioAutoplay: undefined } : x);
-                          setNewMoves(updated);
-                          if (editingPuzzleId) {
-                            void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
-                          }
+                <div className="flex items-center gap-2">
+                  <audio
+                    key={newMoveDialogAudio}
+                    controls
+                    src={`${API_URL}/uploads/audio/${encodeURIComponent(newMoveDialogAudio)}`}
+                    className="h-8 max-w-[260px] flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    disabled={busy || audioUploading}
+                    title="Audioni o'chirish"
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Audioni o'chirish",
+                        description: "Audio tushuntirishni o'chirasizmi?",
+                        confirmLabel: "O'chirish",
+                        cancelLabel: "Bekor qilish",
+                        variant: "danger",
+                      });
+                      if (!ok) return;
+                      const filename = newMoveDialogAudio;
+                      setNewMoveDialogAudio(undefined);
+                      if (newMoveDialogIdx !== null) {
+                        const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: undefined } : x);
+                        setNewMoves(updated);
+                        if (editingPuzzleId) {
+                          void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
                         }
-                        if (filename) {
-                          void adminDebutsApi.deleteAudio(filename).catch(() => {});
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={newMoveDialogAudioAutoplay}
-                      disabled={busy || audioUploading}
-                      onChange={(e) => setNewMoveDialogAudioAutoplay(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>Avtomatik ijro qilish</span>
-                  </label>
-                  <label
-                    className={`flex items-center gap-2 text-xs transition-opacity ${
-                      newMoveDialogAudioAutoplay ? "text-slate-700" : "pointer-events-none text-slate-400 opacity-60"
-                    }`}
+                      }
+                      if (filename) {
+                        void adminDebutsApi.deleteAudio(filename).catch(() => {});
+                      }
+                    }}
                   >
-                    <span className="shrink-0">Kechikish (sekund):</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={60}
-                      step={1}
-                      value={newMoveDialogAudioDelay}
-                      disabled={busy || audioUploading || !newMoveDialogAudioAutoplay}
-                      onChange={(e) => {
-                        const raw = Number(e.target.value);
-                        if (Number.isNaN(raw)) return;
-                        const clamped = Math.max(0, Math.min(60, Math.round(raw)));
-                        setNewMoveDialogAudioDelay(clamped);
-                      }}
-                      className="h-8 w-20 rounded-md border border-slate-300 bg-white px-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none disabled:bg-slate-50"
-                    />
-                  </label>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1214,9 +1168,8 @@ export function PuzzlesCrudPage() {
                         setAudioUploading(true);
                         const res = await adminDebutsApi.uploadAudio(file);
                         setNewMoveDialogAudio(res.filename);
-                        setNewMoveDialogAudioDelay((d) => d ?? 5);
                         if (newMoveDialogIdx !== null) {
-                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename, audioDelaySeconds: newMoveDialogAudioDelay, audioAutoplay: newMoveDialogAudioAutoplay } : x);
+                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
                           setNewMoves(updated);
                           if (editingPuzzleId) {
                             void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
@@ -1259,9 +1212,8 @@ export function PuzzlesCrudPage() {
                           setAudioUploading(true);
                           const res = await adminDebutsApi.uploadAudio(file);
                           setNewMoveDialogAudio(res.filename);
-                          setNewMoveDialogAudioDelay((d) => d ?? 5);
                           if (newMoveDialogIdx !== null) {
-                            const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename, audioDelaySeconds: newMoveDialogAudioDelay, audioAutoplay: newMoveDialogAudioAutoplay } : x);
+                            const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
                             setNewMoves(updated);
                             if (editingPuzzleId) {
                               void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
@@ -1289,8 +1241,6 @@ export function PuzzlesCrudPage() {
                   const value = newMoveDialogValue;
                   const { circles: c, arrows: a } = newMoveDialogShapes;
                   const audio = newMoveDialogAudio;
-                  const audioDelay = newMoveDialogAudioDelay;
-                  const audioAutoplay = newMoveDialogAudioAutoplay;
                   setNewMoves((prev) =>
                     prev.map((x, i) =>
                       i === idx
@@ -1300,8 +1250,6 @@ export function PuzzlesCrudPage() {
                             circles: c.length > 0 ? c : undefined,
                             arrows: a.length > 0 ? a : undefined,
                             audioUrl: audio || undefined,
-                            audioDelaySeconds: audio ? audioDelay : undefined,
-                            audioAutoplay: audio ? audioAutoplay : undefined,
                           }
                         : x,
                     ),

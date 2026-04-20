@@ -1,18 +1,9 @@
 import * as React from "react";
 import { Chess, type Square } from "chess.js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  BaseChessboard,
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-  Button,
-  TruncatedText,
-} from "@shaxmatchi/ui";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { BaseChessboard, Button } from "@shaxmatchi/ui";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useStudentPageHeader } from "../layouts/AppLayout";
 import type { PieceDropHandlerArgs } from "react-chessboard";
 import {
   BookOpen,
@@ -25,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
+import { studentSettingsApi } from "../api/studentSettingsApi";
 import { API_URL } from "../auth/auth";
 import {
   playAchievementSound,
@@ -32,10 +24,6 @@ import {
   playGameStartSound,
   playMoveSound,
 } from "../lib/playSounds";
-
-function assignmentModeTitle(mode: "new" | "test"): string {
-  return mode === "test" ? "Mashq" : "O'rganish";
-}
 
 type PuzzleStudentSide = "white" | "black";
 
@@ -113,6 +101,11 @@ export function PuzzlePage() {
     queryFn: () => studentDebutsApi.getPuzzle(id!),
     enabled: Boolean(id),
   });
+  const settingsQuery = useQuery({
+    queryKey: ["appSettings"],
+    queryFn: studentSettingsApi.get,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const puzzle = puzzleQuery.data;
   const puzzleMoves: PuzzleMove[] = Array.isArray(puzzle?.moves) ? puzzle.moves : [];
@@ -127,6 +120,7 @@ export function PuzzlePage() {
   const practiceBoardWrapRef = React.useRef<HTMLDivElement>(null);
   const studyAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const [isStudyAudioPlaying, setIsStudyAudioPlaying] = React.useState(false);
+  const [isWaitingForAudioDelay, setIsWaitingForAudioDelay] = React.useState(false);
   const [moveIdx, setMoveIdx] = React.useState(0);
   const [isPracticeResetting, setIsPracticeResetting] = React.useState(false);
   const [isLimitRedirecting, setIsLimitRedirecting] = React.useState(false);
@@ -400,15 +394,20 @@ export function PuzzlePage() {
     setIsStudyAudioPlaying(false);
   }, [moveIdx, mode]);
 
+  const audioAutoplayEnabled = settingsQuery.data?.audioAutoplay ?? true;
+  const audioDelaySeconds = settingsQuery.data?.audioDelaySeconds ?? 5;
+
   React.useEffect(() => {
+    setIsWaitingForAudioDelay(false);
+    if (!audioAutoplayEnabled) return;
     if (mode !== "study") return;
     if (moveIdx <= 0) return;
     const move = puzzleMoves[moveIdx - 1];
     if (!move?.audioUrl) return;
-    if (move.audioAutoplay === false) return;
-    const delaySec = typeof move.audioDelaySeconds === "number" ? move.audioDelaySeconds : 5;
-    const delayMs = Math.max(0, delaySec) * 1000;
+    const delayMs = Math.max(0, audioDelaySeconds) * 1000;
+    if (delayMs > 0) setIsWaitingForAudioDelay(true);
     const timer = window.setTimeout(() => {
+      setIsWaitingForAudioDelay(false);
       const el = studyAudioRef.current;
       if (!el) return;
       const p = el.play();
@@ -416,8 +415,11 @@ export function PuzzlePage() {
         p.catch(() => {});
       }
     }, delayMs);
-    return () => window.clearTimeout(timer);
-  }, [moveIdx, mode, puzzleMoves]);
+    return () => {
+      window.clearTimeout(timer);
+      setIsWaitingForAudioDelay(false);
+    };
+  }, [moveIdx, mode, puzzleMoves, audioAutoplayEnabled, audioDelaySeconds]);
   React.useEffect(
     () => () => {
       if (limitRedirectTimerRef.current !== null) {
@@ -436,6 +438,20 @@ export function PuzzlePage() {
     practiceLimit !== null &&
     practiceAttemptsUsed !== null &&
     practiceAttemptsUsed >= practiceLimit;
+
+  useStudentPageHeader(
+    puzzle
+      ? {
+          title: puzzle.name,
+          mode: puzzle.mode,
+          meta:
+            puzzle.mode === "test" && practiceAttemptsUsed !== null
+              ? `${practiceAttemptsUsed}${practiceLimit !== null ? `/${practiceLimit}` : ""}`
+              : undefined,
+          backTo: "/debut",
+        }
+      : null,
+  );
 
   React.useEffect(() => {
     const rawError: unknown = puzzleQuery.error;
@@ -623,50 +639,6 @@ export function PuzzlePage() {
         </div>
       ) : null}
 
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link to="/debut">Debyutlar</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>Variant</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:p-3">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h1 className="min-w-0 flex-1 text-lg font-semibold tracking-tight sm:text-xl">
-            <TruncatedText text={puzzle.name} maxLines={3} className="font-semibold text-inherit" />
-          </h1>
-          <span
-            className="inline-flex shrink-0 items-center gap-1.5 text-sm text-slate-600"
-            title={assignmentModeTitle(puzzle.mode)}
-          >
-            <span className="text-slate-500">Rejim:</span>
-            {puzzle.mode === "test" ? (
-              <Dumbbell className="h-4 w-4 text-slate-800" aria-hidden />
-            ) : (
-              <BookOpen className="h-4 w-4 text-slate-800" aria-hidden />
-            )}
-            <span className="sr-only">{assignmentModeTitle(puzzle.mode)}</span>
-            {puzzle.mode === "test" && practiceAttemptsUsed !== null ? (
-              <>
-                {" · "}
-                Urinishlar:{" "}
-                <span className="font-mono text-xs">
-                  {practiceAttemptsUsed}
-                  {practiceLimit !== null ? `/${practiceLimit}` : ""}
-                </span>
-              </>
-            ) : null}
-          </span>
-        </div>
-      </div>
-
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-3">
         <div
           ref={practiceBoardWrapRef}
@@ -799,6 +771,7 @@ export function PuzzlePage() {
                 ref={studyAudioRef}
                 key={puzzleMoves[moveIdx - 1].audioUrl}
                 controls
+                hidden={isWaitingForAudioDelay}
                 src={`${API_URL}/uploads/audio/${encodeURIComponent(puzzleMoves[moveIdx - 1].audioUrl!)}`}
                 onPlay={() => setIsStudyAudioPlaying(true)}
                 onPause={() => setIsStudyAudioPlaying(false)}

@@ -6,6 +6,7 @@ import { AuthModule } from "./auth/auth.module";
 import { AdminStatsModule } from "./admin-stats/admin-stats.module";
 import { DebutsModule } from "./debuts/debuts.module";
 import { DbModule } from "./db/db.module";
+import { SettingsModule } from "./settings/settings.module";
 import { StudentModule } from "./student/student.module";
 import { TelegramModule } from "./telegram/telegram.module";
 import { UploadsModule } from "./uploads/uploads.module";
@@ -17,6 +18,7 @@ import { UploadsModule } from "./uploads/uploads.module";
     AuthModule,
     AdminStatsModule,
     DebutsModule,
+    SettingsModule,
     StudentModule,
     TelegramModule,
     UploadsModule,

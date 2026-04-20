@@ -58,8 +58,6 @@ export type PuzzleMove = {
   circles?: PuzzleBoardCircle[] | string[];
   arrows?: PuzzleBoardArrow[];
   audioUrl?: string;
-  audioDelaySeconds?: number;
-  audioAutoplay?: boolean;
 };
 export type PuzzleStudentSide = "white" | "black";
 export type StudentPuzzleDetail = {

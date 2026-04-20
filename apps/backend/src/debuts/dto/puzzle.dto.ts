@@ -1,14 +1,10 @@
 import { plainToInstance, Transform, Type } from "class-transformer";
 import {
   IsArray,
-  IsBoolean,
   IsIn,
-  IsNumber,
   IsOptional,
   IsString,
   Matches,
-  Max,
-  Min,
   MinLength,
   ValidateNested,
 } from "class-validator";
@@ -90,18 +86,6 @@ export class PuzzleMoveDto {
   @IsOptional()
   @IsString()
   audioUrl?: string;
-
-  /** Seconds to wait before auto-playing the audio on the student side (0-60). */
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(60)
-  audioDelaySeconds?: number;
-
-  /** Whether the audio should be auto-played on the student side (default true). */
-  @IsOptional()
-  @IsBoolean()
-  audioAutoplay?: boolean;
 }
 
 export class PuzzleDto {

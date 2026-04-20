@@ -23,10 +23,6 @@ export type PuzzleMove = {
   circles?: PuzzleBoardCircle[] | string[];
   arrows?: PuzzleBoardArrow[];
   audioUrl?: string;
-  /** Seconds to wait before auto-playing audio on the student side (0–60). */
-  audioDelaySeconds?: number;
-  /** Whether the audio should auto-play on the student side (default true). */
-  audioAutoplay?: boolean;
 };
 export type PuzzleStudentSide = "white" | "black";
 export type Puzzle = {
