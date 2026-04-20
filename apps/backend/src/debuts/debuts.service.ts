@@ -4,7 +4,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import { courses, debutLevels, modules, puzzleAssignments, puzzles, tasks, users } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
@@ -215,7 +215,11 @@ export class DebutsService {
 
   async listPuzzles(levelId: string, courseId: string, moduleId: string, taskId: string) {
     await this.getTask(levelId, courseId, moduleId, taskId);
-    return this.getDb().select().from(puzzles).where(eq(puzzles.taskId, taskId));
+    return this.getDb()
+      .select()
+      .from(puzzles)
+      .where(eq(puzzles.taskId, taskId))
+      .orderBy(asc(puzzles.sortOrder), asc(puzzles.createdAt));
   }
 
   async createPuzzle(
@@ -231,15 +235,21 @@ export class DebutsService {
         circles?: Array<{ square: string; color?: string }>;
         arrows?: Array<{ startSquare: string; endSquare: string; color?: string }>;
         audioUrl?: string;
+        audioDelaySeconds?: number;
+        audioAutoplay?: boolean;
       }>;
       studentSide?: "white" | "black";
     },
   ) {
     await this.getTask(levelId, courseId, moduleId, taskId);
     const studentSide = input.studentSide ?? "white";
+    const [{ nextOrder }] = await this.getDb()
+      .select({ nextOrder: sql<number>`COALESCE(MAX(${puzzles.sortOrder}), -1) + 1` })
+      .from(puzzles)
+      .where(eq(puzzles.taskId, taskId));
     const rows = await this.getDb()
       .insert(puzzles)
-      .values({ taskId, name: input.name, moves: input.moves, studentSide })
+      .values({ taskId, name: input.name, moves: input.moves, studentSide, sortOrder: nextOrder })
       .returning();
     return rows[0]!;
   }
@@ -258,6 +268,8 @@ export class DebutsService {
         circles?: Array<{ square: string; color?: string }>;
         arrows?: Array<{ startSquare: string; endSquare: string; color?: string }>;
         audioUrl?: string;
+        audioDelaySeconds?: number;
+        audioAutoplay?: boolean;
       }>;
       studentSide?: "white" | "black";
     },
@@ -285,6 +297,33 @@ export class DebutsService {
       .returning();
     const row = rows[0];
     if (!row) throw new NotFoundException("Variant not found");
+    return { ok: true };
+  }
+
+  async reorderPuzzles(
+    levelId: string,
+    courseId: string,
+    moduleId: string,
+    taskId: string,
+    puzzleIds: string[],
+  ) {
+    await this.getTask(levelId, courseId, moduleId, taskId);
+    const db = this.getDb();
+    const existing = await db
+      .select({ id: puzzles.id })
+      .from(puzzles)
+      .where(and(eq(puzzles.taskId, taskId), inArray(puzzles.id, puzzleIds)));
+    if (existing.length !== puzzleIds.length) {
+      throw new NotFoundException("One or more variants not found for this task");
+    }
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < puzzleIds.length; i++) {
+        await tx
+          .update(puzzles)
+          .set({ sortOrder: i })
+          .where(and(eq(puzzles.id, puzzleIds[i]!), eq(puzzles.taskId, taskId)));
+      }
+    });
     return { ok: true };
   }
 

@@ -25,6 +25,9 @@ import {
   Mic,
   Volume2,
   Copy,
+  ChevronUp,
+  ChevronDown,
+  MoreVertical,
 } from "lucide-react";
 import { API_URL } from "../auth/auth";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
@@ -229,6 +232,8 @@ export function PuzzlesCrudPage() {
     arrows: PuzzleBoardArrow[];
   }>({ circles: [], arrows: [] });
   const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
+  const [newMoveDialogAudioDelay, setNewMoveDialogAudioDelay] = React.useState<number>(5);
+  const [newMoveDialogAudioAutoplay, setNewMoveDialogAudioAutoplay] = React.useState<boolean>(true);
   const [audioUploading, setAudioUploading] = React.useState(false);
   const [copyExplTargetIdx, setCopyExplTargetIdx] = React.useState<number | null>(null);
   const [copyExplVariantId, setCopyExplVariantId] = React.useState<string>("");
@@ -239,6 +244,11 @@ export function PuzzlesCrudPage() {
   const [error, setError] = React.useState<string | null>(null);
   /** Last saved server state when editing a variant (for JSON snapshot + discard). */
   const editBaselineRef = React.useRef<PuzzleEditBaseline | null>(null);
+
+  // Row actions menu
+  const [actionsOpenForPuzzleId, setActionsOpenForPuzzleId] = React.useState<
+    string | null
+  >(null);
 
   // Assign puzzle → student
   const [assignOpenForPuzzleId, setAssignOpenForPuzzleId] = React.useState<
@@ -326,7 +336,32 @@ export function PuzzlesCrudPage() {
     enabled: assignOpenForPuzzleId !== null,
   });
 
-  const items: Puzzle[] = puzzlesQuery.data ?? [];
+  const serverItems: Puzzle[] = puzzlesQuery.data ?? [];
+  const [orderedIds, setOrderedIds] = React.useState<string[] | null>(null);
+
+  React.useEffect(() => {
+    if (orderedIds === null) return;
+    const serverIdSet = new Set(serverItems.map((p) => p.id));
+    const orderedSet = new Set(orderedIds);
+    const sameSize = serverIdSet.size === orderedSet.size;
+    const sameIds = sameSize && orderedIds.every((id) => serverIdSet.has(id));
+    if (!sameIds) setOrderedIds(null);
+  }, [serverItems, orderedIds]);
+
+  const items: Puzzle[] = React.useMemo(() => {
+    if (!orderedIds) return serverItems;
+    const byId = new Map(serverItems.map((p) => [p.id, p]));
+    return orderedIds
+      .map((id) => byId.get(id))
+      .filter((p): p is Puzzle => p !== undefined);
+  }, [orderedIds, serverItems]);
+
+  const reorderDirty = React.useMemo(() => {
+    if (!orderedIds) return false;
+    if (orderedIds.length !== serverItems.length) return false;
+    return orderedIds.some((id, i) => id !== serverItems[i]?.id);
+  }, [orderedIds, serverItems]);
+
   const levelName =
     levelsQuery.data?.find((l) => l.id === levelIdSafe)?.name ?? "Debyut daraja";
   const courseName =
@@ -435,18 +470,19 @@ export function PuzzlesCrudPage() {
     );
   }, [isEditing, newName, studentSide, newPgn, newMoves]);
 
-  const leaveBlocker = useBlocker(isEditing && editingDirty);
+  const hasUnsavedChanges = (isEditing && editingDirty) || reorderDirty;
+  const leaveBlocker = useBlocker(hasUnsavedChanges);
 
 
   React.useEffect(() => {
-    if (!isEditing || !editingDirty) return;
+    if (!hasUnsavedChanges) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [isEditing, editingDirty]);
+  }, [hasUnsavedChanges]);
 
   function resetForm() {
     editBaselineRef.current = null;
@@ -461,6 +497,8 @@ export function PuzzlesCrudPage() {
     setNewMoveDialogValue("");
     setNewMoveDialogShapes({ circles: [], arrows: [] });
     setNewMoveDialogAudio(undefined);
+    setNewMoveDialogAudioDelay(5);
+    setNewMoveDialogAudioAutoplay(true);
   }
 
   function startEdit(p: Puzzle) {
@@ -610,6 +648,46 @@ export function PuzzlesCrudPage() {
       });
     },
   });
+  const puzzlesQueryKey = React.useMemo(
+    () => ["adminDebuts", "puzzles", levelIdSafe, courseIdSafe, moduleIdSafe, taskIdSafe] as const,
+    [levelIdSafe, courseIdSafe, moduleIdSafe, taskIdSafe],
+  );
+  const reorderPuzzlesMutation = useMutation({
+    mutationFn: (puzzleIds: string[]) =>
+      adminDebutsApi.reorderPuzzles(levelIdSafe, courseIdSafe, moduleIdSafe, taskIdSafe, puzzleIds),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: puzzlesQueryKey });
+    },
+  });
+  const movePuzzle = React.useCallback(
+    (puzzleId: string, direction: -1 | 1) => {
+      setOrderedIds((prev) => {
+        const currentIds = prev ?? serverItems.map((p) => p.id);
+        const idx = currentIds.indexOf(puzzleId);
+        if (idx < 0) return prev;
+        const target = idx + direction;
+        if (target < 0 || target >= currentIds.length) return prev;
+        const next = currentIds.slice();
+        [next[idx], next[target]] = [next[target]!, next[idx]!];
+        return next;
+      });
+    },
+    [serverItems],
+  );
+  const discardOrder = React.useCallback(() => {
+    setOrderedIds(null);
+    setError(null);
+  }, []);
+  const saveOrder = React.useCallback(async () => {
+    if (!orderedIds) return;
+    setError(null);
+    try {
+      await reorderPuzzlesMutation.mutateAsync(orderedIds);
+      setOrderedIds(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Tartibni saqlab bo'lmadi");
+    }
+  }, [orderedIds, reorderPuzzlesMutation]);
 
   const assignPuzzleMutation = useMutation({
     mutationFn: (input: {
@@ -731,33 +809,40 @@ export function PuzzlesCrudPage() {
   }
 
   async function saveAndLeaveAfterBlockedNavigation() {
-    const name = newName.trim();
-    if (!name) {
-      setError("Variant nomi kiriting.");
-      return;
-    }
-    if (newMoves.length === 0) {
-      setError("PGN kiriting (hali yurishlar yo'q).");
-      return;
-    }
-    if (!editingPuzzleId) return;
     setError(null);
     try {
-      await updatePuzzleMutation.mutateAsync({
-        puzzleId: editingPuzzleId,
-        name,
-        moves: newMoves,
-        studentSide,
-      });
+      if (isEditing && editingDirty) {
+        const name = newName.trim();
+        if (!name) {
+          setError("Variant nomi kiriting.");
+          return;
+        }
+        if (newMoves.length === 0) {
+          setError("PGN kiriting (hali yurishlar yo'q).");
+          return;
+        }
+        if (!editingPuzzleId) return;
+        await updatePuzzleMutation.mutateAsync({
+          puzzleId: editingPuzzleId,
+          name,
+          moves: newMoves,
+          studentSide,
+        });
+      }
+      if (reorderDirty && orderedIds) {
+        await reorderPuzzlesMutation.mutateAsync(orderedIds);
+        setOrderedIds(null);
+      }
       if (leaveBlocker.state === "blocked") {
         leaveBlocker.proceed();
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Variantni saqlab bo'lmadi");
+      setError(e instanceof Error ? e.message : "O'zgarishlarni saqlab bo'lmadi");
     }
   }
 
   function discardAndLeaveAfterBlockedNavigation() {
+    setOrderedIds(null);
     if (leaveBlocker.state === "blocked") {
       leaveBlocker.proceed();
     }
@@ -807,6 +892,42 @@ export function PuzzlesCrudPage() {
         loading={loading}
         backTo={`/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks`}
       />
+
+      {reorderDirty ? (
+        <div className="fixed inset-x-0 top-0 z-50 border-b border-amber-300 bg-amber-50 shadow-sm">
+          <div className="mx-auto flex w-full max-w-md items-center gap-2 px-3 py-1.5 sm:max-w-5xl sm:px-6">
+            <span className="flex-1 truncate text-xs text-amber-900 sm:text-sm">
+              Tartib o'zgartirildi
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="h-7 px-2 text-xs"
+              disabled={reorderPuzzlesMutation.isPending}
+              onClick={discardOrder}
+            >
+              Bekor qilish
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={reorderPuzzlesMutation.isPending}
+              onClick={() => void saveOrder()}
+            >
+              {reorderPuzzlesMutation.isPending ? (
+                <span className="inline-flex items-center gap-1">
+                  <InlineSpinner />
+                  Saqlanmoqda…
+                </span>
+              ) : (
+                "Saqlash"
+              )}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {error ? <div className={debutsUi.error}>{error}</div> : null}
       {assignSuccess ? (
@@ -947,6 +1068,12 @@ export function PuzzlesCrudPage() {
                             arrows: m.arrows ?? [],
                           });
                           setNewMoveDialogAudio(m.audioUrl);
+                          setNewMoveDialogAudioDelay(
+                            typeof m.audioDelaySeconds === "number" ? m.audioDelaySeconds : 5,
+                          );
+                          setNewMoveDialogAudioAutoplay(
+                            typeof m.audioAutoplay === "boolean" ? m.audioAutoplay : true,
+                          );
                         }}
                       >
                         {moveHasExplanationContent(m) ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -1003,44 +1130,80 @@ export function PuzzlesCrudPage() {
                 Audio tushuntirish
               </div>
               {newMoveDialogAudio ? (
-                <div className="flex items-center gap-2">
-                  <audio
-                    key={newMoveDialogAudio}
-                    controls
-                    src={`${API_URL}/uploads/audio/${encodeURIComponent(newMoveDialogAudio)}`}
-                    className="h-8 max-w-[260px] flex-1"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="danger"
-                    disabled={busy || audioUploading}
-                    title="Audioni o'chirish"
-                    onClick={async () => {
-                      const ok = await confirm({
-                        title: "Audioni o'chirish",
-                        description: "Audio tushuntirishni o'chirasizmi?",
-                        confirmLabel: "O'chirish",
-                        cancelLabel: "Bekor qilish",
-                        variant: "danger",
-                      });
-                      if (!ok) return;
-                      const filename = newMoveDialogAudio;
-                      setNewMoveDialogAudio(undefined);
-                      if (newMoveDialogIdx !== null) {
-                        const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: undefined } : x);
-                        setNewMoves(updated);
-                        if (editingPuzzleId) {
-                          void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <audio
+                      key={newMoveDialogAudio}
+                      controls
+                      src={`${API_URL}/uploads/audio/${encodeURIComponent(newMoveDialogAudio)}`}
+                      className="h-8 max-w-[260px] flex-1"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      disabled={busy || audioUploading}
+                      title="Audioni o'chirish"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: "Audioni o'chirish",
+                          description: "Audio tushuntirishni o'chirasizmi?",
+                          confirmLabel: "O'chirish",
+                          cancelLabel: "Bekor qilish",
+                          variant: "danger",
+                        });
+                        if (!ok) return;
+                        const filename = newMoveDialogAudio;
+                        setNewMoveDialogAudio(undefined);
+                        setNewMoveDialogAudioDelay(5);
+                        setNewMoveDialogAudioAutoplay(true);
+                        if (newMoveDialogIdx !== null) {
+                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: undefined, audioDelaySeconds: undefined, audioAutoplay: undefined } : x);
+                          setNewMoves(updated);
+                          if (editingPuzzleId) {
+                            void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
+                          }
                         }
-                      }
-                      if (filename) {
-                        void adminDebutsApi.deleteAudio(filename).catch(() => {});
-                      }
-                    }}
+                        if (filename) {
+                          void adminDebutsApi.deleteAudio(filename).catch(() => {});
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={newMoveDialogAudioAutoplay}
+                      disabled={busy || audioUploading}
+                      onChange={(e) => setNewMoveDialogAudioAutoplay(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>Avtomatik ijro qilish</span>
+                  </label>
+                  <label
+                    className={`flex items-center gap-2 text-xs transition-opacity ${
+                      newMoveDialogAudioAutoplay ? "text-slate-700" : "pointer-events-none text-slate-400 opacity-60"
+                    }`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                    <span className="shrink-0">Kechikish (sekund):</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={60}
+                      step={1}
+                      value={newMoveDialogAudioDelay}
+                      disabled={busy || audioUploading || !newMoveDialogAudioAutoplay}
+                      onChange={(e) => {
+                        const raw = Number(e.target.value);
+                        if (Number.isNaN(raw)) return;
+                        const clamped = Math.max(0, Math.min(60, Math.round(raw)));
+                        setNewMoveDialogAudioDelay(clamped);
+                      }}
+                      className="h-8 w-20 rounded-md border border-slate-300 bg-white px-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none disabled:bg-slate-50"
+                    />
+                  </label>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1051,8 +1214,9 @@ export function PuzzlesCrudPage() {
                         setAudioUploading(true);
                         const res = await adminDebutsApi.uploadAudio(file);
                         setNewMoveDialogAudio(res.filename);
+                        setNewMoveDialogAudioDelay((d) => d ?? 5);
                         if (newMoveDialogIdx !== null) {
-                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
+                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename, audioDelaySeconds: newMoveDialogAudioDelay, audioAutoplay: newMoveDialogAudioAutoplay } : x);
                           setNewMoves(updated);
                           if (editingPuzzleId) {
                             void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
@@ -1095,8 +1259,9 @@ export function PuzzlesCrudPage() {
                           setAudioUploading(true);
                           const res = await adminDebutsApi.uploadAudio(file);
                           setNewMoveDialogAudio(res.filename);
+                          setNewMoveDialogAudioDelay((d) => d ?? 5);
                           if (newMoveDialogIdx !== null) {
-                            const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
+                            const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename, audioDelaySeconds: newMoveDialogAudioDelay, audioAutoplay: newMoveDialogAudioAutoplay } : x);
                             setNewMoves(updated);
                             if (editingPuzzleId) {
                               void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
@@ -1124,6 +1289,8 @@ export function PuzzlesCrudPage() {
                   const value = newMoveDialogValue;
                   const { circles: c, arrows: a } = newMoveDialogShapes;
                   const audio = newMoveDialogAudio;
+                  const audioDelay = newMoveDialogAudioDelay;
+                  const audioAutoplay = newMoveDialogAudioAutoplay;
                   setNewMoves((prev) =>
                     prev.map((x, i) =>
                       i === idx
@@ -1133,6 +1300,8 @@ export function PuzzlesCrudPage() {
                             circles: c.length > 0 ? c : undefined,
                             arrows: a.length > 0 ? a : undefined,
                             audioUrl: audio || undefined,
+                            audioDelaySeconds: audio ? audioDelay : undefined,
+                            audioAutoplay: audio ? audioAutoplay : undefined,
                           }
                         : x,
                     ),
@@ -1276,46 +1445,118 @@ export function PuzzlesCrudPage() {
                   <TruncatedText text={p.name} className="text-sm font-medium text-slate-900" />
                   <div className="text-xs text-slate-500">{Array.isArray(p.moves) ? p.moves.length : 0} yurish</div>
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                  <button
-                    type="button"
-                    className={debutsUi.accentLink}
-                    title="Ochish"
-                    onClick={() =>
-                      navigate(
-                        `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks/${taskIdSafe}/puzzles/${p.id}/practice`,
-                      )
-                    }
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className={debutsUi.indigoLink}
-                    title="Tayinlash"
-                    onClick={() => {
-                      setAssignSuccess(null);
-                      setAssignError(null);
-                      setAssignMode("new");
-                      setAssignPracticeLimit("");
-                      setAssignStudentId("");
-                      setAssignOpenForPuzzleId(p.id);
-                    }}
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </button>
-                  <button type="button" className={debutsUi.linkBtn} title="Tahrirlash" onClick={() => startEdit(p)}>
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button type="button" className={debutsUi.dangerBtn} title="O'chirish" onClick={() => void remove(p.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className={debutsUi.linkBtn}
+                  title="Amallar"
+                  aria-label="Amallar"
+                  onClick={() => setActionsOpenForPuzzleId(p.id)}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {actionsOpenForPuzzleId ? (() => {
+        const target = items.find((x) => x.id === actionsOpenForPuzzleId);
+        if (!target) return null;
+        const targetIdx = items.findIndex((x) => x.id === actionsOpenForPuzzleId);
+        const close = () => setActionsOpenForPuzzleId(null);
+        const actionBtn = "flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40";
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center"
+            onMouseDown={close}
+          >
+            <div
+              className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="mb-2 min-w-0 truncate px-1 text-sm font-semibold text-slate-900">{target.name}</div>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  className={actionBtn}
+                  disabled={targetIdx <= 0 || reorderPuzzlesMutation.isPending}
+                  onClick={() => {
+                    movePuzzle(target.id, -1);
+                    close();
+                  }}
+                >
+                  <ChevronUp className="h-4 w-4 text-slate-500" />
+                  Yuqoriga
+                </button>
+                <button
+                  type="button"
+                  className={actionBtn}
+                  disabled={targetIdx < 0 || targetIdx >= items.length - 1 || reorderPuzzlesMutation.isPending}
+                  onClick={() => {
+                    movePuzzle(target.id, 1);
+                    close();
+                  }}
+                >
+                  <ChevronDown className="h-4 w-4 text-slate-500" />
+                  Pastga
+                </button>
+                <button
+                  type="button"
+                  className={actionBtn}
+                  onClick={() => {
+                    close();
+                    navigate(
+                      `/debuts/levels/${levelIdSafe}/courses/${courseIdSafe}/modules/${moduleIdSafe}/tasks/${taskIdSafe}/puzzles/${target.id}/practice`,
+                    );
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4 text-emerald-600" />
+                  Ochish
+                </button>
+                <button
+                  type="button"
+                  className={actionBtn}
+                  onClick={() => {
+                    close();
+                    setAssignSuccess(null);
+                    setAssignError(null);
+                    setAssignMode("new");
+                    setAssignPracticeLimit("");
+                    setAssignStudentId("");
+                    setAssignOpenForPuzzleId(target.id);
+                  }}
+                >
+                  <UserPlus className="h-4 w-4 text-indigo-600" />
+                  Tayinlash
+                </button>
+                <button
+                  type="button"
+                  className={actionBtn}
+                  onClick={() => {
+                    close();
+                    startEdit(target);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 text-slate-500" />
+                  Tahrirlash
+                </button>
+                <button
+                  type="button"
+                  className={actionBtn + " !text-red-600"}
+                  onClick={() => {
+                    close();
+                    void remove(target.id);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  O&apos;chirish
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       {assignOpenForPuzzleId ? (
         <div

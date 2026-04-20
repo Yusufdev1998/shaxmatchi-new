@@ -6,6 +6,7 @@ import { DebutsService } from "./debuts.service";
 import { AssignPuzzleDto } from "./dto/assign-puzzle.dto";
 import { NameDto } from "./dto/name.dto";
 import { PuzzleDto } from "./dto/puzzle.dto";
+import { ReorderPuzzlesDto } from "./dto/reorder-puzzles.dto";
 
 @Controller("admin/debuts")
 @UseGuards(JwtAuthGuard, TeacherOnlyGuard)
@@ -157,6 +158,17 @@ export class DebutsController {
       moves: dto.moves,
       studentSide: dto.studentSide,
     });
+  }
+
+  @Patch("levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles/reorder")
+  reorderPuzzles(
+    @Param("levelId") levelId: string,
+    @Param("courseId") courseId: string,
+    @Param("moduleId") moduleId: string,
+    @Param("taskId") taskId: string,
+    @Body() dto: ReorderPuzzlesDto,
+  ) {
+    return this.debuts.reorderPuzzles(levelId, courseId, moduleId, taskId, dto.puzzleIds);
   }
 
   @Patch("levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles/:puzzleId")

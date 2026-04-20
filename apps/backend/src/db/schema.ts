@@ -111,6 +111,7 @@ export const puzzles = pgTable("puzzles", {
   moves: jsonb("moves").notNull(),
   /** Which side the student plays in mashq/takrorlash (line index 0 = White from start). */
   studentSide: puzzleStudentSide("student_side").notNull().default("white"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

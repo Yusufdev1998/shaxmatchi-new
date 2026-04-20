@@ -75,6 +75,7 @@ export class StudentDebutsService {
         asc(courses.createdAt),
         asc(modules.createdAt),
         asc(tasks.createdAt),
+        asc(puzzles.sortOrder),
         asc(puzzles.createdAt),
       );
 
@@ -354,7 +355,7 @@ export class StudentDebutsService {
         ),
       )
       .where(eq(puzzles.taskId, input.taskId))
-      .orderBy(asc(puzzles.createdAt));
+      .orderBy(asc(puzzles.sortOrder), asc(puzzles.createdAt));
 
     return rows.map((r) => ({
       id: r.id,

@@ -35,7 +35,7 @@ export class AuthService {
       type: user.type,
     };
 
-    const signOptions = user.type === "student" ? { expiresIn: "100y" } : {};
+    const signOptions = user.type === "student" ? { expiresIn: "100y" as const } : {};
     const accessToken = await this.jwt.signAsync(payload, signOptions);
     return { accessToken, user: toPublicUser({ id: user.id, login: user.login, type: user.type }) };
   }

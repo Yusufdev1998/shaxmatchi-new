@@ -23,6 +23,10 @@ export type PuzzleMove = {
   circles?: PuzzleBoardCircle[] | string[];
   arrows?: PuzzleBoardArrow[];
   audioUrl?: string;
+  /** Seconds to wait before auto-playing audio on the student side (0–60). */
+  audioDelaySeconds?: number;
+  /** Whether the audio should auto-play on the student side (default true). */
+  audioAutoplay?: boolean;
 };
 export type PuzzleStudentSide = "white" | "black";
 export type Puzzle = {
@@ -31,6 +35,7 @@ export type Puzzle = {
   name: string;
   moves: PuzzleMove[];
   studentSide: PuzzleStudentSide;
+  sortOrder: number;
   createdAt: string;
 };
 export type PuzzleAssignmentMode = "new" | "test";
@@ -139,6 +144,17 @@ export const adminDebutsApi = {
     api<{ ok: true }>(
       `/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles/${puzzleId}`,
       { method: "DELETE" },
+    ),
+  reorderPuzzles: (
+    levelId: string,
+    courseId: string,
+    moduleId: string,
+    taskId: string,
+    puzzleIds: string[],
+  ) =>
+    api<{ ok: true }>(
+      `/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}/puzzles/reorder`,
+      { method: "PATCH", body: JSON.stringify({ puzzleIds }) },
     ),
 
   // assignments

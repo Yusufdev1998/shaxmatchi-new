@@ -71,6 +71,13 @@
       "when": 1774868000000,
       "tag": "0009_practice_failure_progress_sum",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776665574017,
+      "tag": "0010_dazzling_warlock",
+      "breakpoints": true
     }
   ]
 }

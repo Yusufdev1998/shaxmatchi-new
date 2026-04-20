@@ -125,6 +125,7 @@ export function PuzzlePage() {
   /** Avoid resetting board/mode when the same variant refetches (e.g. after consume-attempt). */
   const loadedPuzzleIdRef = React.useRef<string | null>(null);
   const practiceBoardWrapRef = React.useRef<HTMLDivElement>(null);
+  const studyAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const [isStudyAudioPlaying, setIsStudyAudioPlaying] = React.useState(false);
   const [moveIdx, setMoveIdx] = React.useState(0);
   const [isPracticeResetting, setIsPracticeResetting] = React.useState(false);
@@ -398,6 +399,25 @@ export function PuzzlePage() {
   React.useEffect(() => {
     setIsStudyAudioPlaying(false);
   }, [moveIdx, mode]);
+
+  React.useEffect(() => {
+    if (mode !== "study") return;
+    if (moveIdx <= 0) return;
+    const move = puzzleMoves[moveIdx - 1];
+    if (!move?.audioUrl) return;
+    if (move.audioAutoplay === false) return;
+    const delaySec = typeof move.audioDelaySeconds === "number" ? move.audioDelaySeconds : 5;
+    const delayMs = Math.max(0, delaySec) * 1000;
+    const timer = window.setTimeout(() => {
+      const el = studyAudioRef.current;
+      if (!el) return;
+      const p = el.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {});
+      }
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [moveIdx, mode, puzzleMoves]);
   React.useEffect(
     () => () => {
       if (limitRedirectTimerRef.current !== null) {
@@ -776,6 +796,7 @@ export function PuzzlePage() {
             </div>
             {moveIdx > 0 && puzzleMoves[moveIdx - 1]?.audioUrl ? (
               <audio
+                ref={studyAudioRef}
                 key={puzzleMoves[moveIdx - 1].audioUrl}
                 controls
                 src={`${API_URL}/uploads/audio/${encodeURIComponent(puzzleMoves[moveIdx - 1].audioUrl!)}`}
