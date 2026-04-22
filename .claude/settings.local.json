@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs -I {} bash -c 'echo \"=== {} ===\" && ls -la {} | head -20')"
+      "Bash(xargs -I {} bash -c 'echo \"=== {} ===\" && ls -la {} | head -20')",
+      "Bash(pnpm exec *)"
     ]
   }
 }

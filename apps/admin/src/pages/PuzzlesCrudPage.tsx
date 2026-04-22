@@ -1431,7 +1431,12 @@ export function PuzzlesCrudPage() {
         if (!target) return null;
         const targetIdx = items.findIndex((x) => x.id === actionsOpenForPuzzleId);
         const close = () => setActionsOpenForPuzzleId(null);
-        const actionBtn = "flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40";
+        const primaryBtnBase =
+          "flex aspect-square flex-col items-center justify-center gap-2 rounded-xl text-sm font-medium text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40";
+        const assignBtn = `${primaryBtnBase} bg-emerald-500 hover:bg-emerald-600`;
+        const editBtn = `${primaryBtnBase} bg-orange-500 hover:bg-orange-600`;
+        const secondaryBtn =
+          "flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40";
         return (
           <div
             className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center"
@@ -1441,11 +1446,41 @@ export function PuzzlesCrudPage() {
               className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <div className="mb-2 min-w-0 truncate px-1 text-sm font-semibold text-slate-900">{target.name}</div>
-              <div className="flex flex-col gap-1.5">
+              <div className="mb-3 min-w-0 truncate px-1 text-sm font-semibold text-slate-900">{target.name}</div>
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  className={actionBtn}
+                  className={assignBtn}
+                  onClick={() => {
+                    close();
+                    setAssignSuccess(null);
+                    setAssignError(null);
+                    setAssignMode("new");
+                    setAssignPracticeLimit("");
+                    setAssignDueInHours("");
+                    setAssignStudentId("");
+                    setAssignOpenForPuzzleId(target.id);
+                  }}
+                >
+                  <UserPlus className="h-7 w-7" />
+                  Tayinlash
+                </button>
+                <button
+                  type="button"
+                  className={editBtn}
+                  onClick={() => {
+                    close();
+                    startEdit(target);
+                  }}
+                >
+                  <Pencil className="h-7 w-7" />
+                  Tahrirlash
+                </button>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className={secondaryBtn}
                   disabled={targetIdx <= 0 || reorderPuzzlesMutation.isPending}
                   onClick={() => {
                     movePuzzle(target.id, -1);
@@ -1457,7 +1492,7 @@ export function PuzzlesCrudPage() {
                 </button>
                 <button
                   type="button"
-                  className={actionBtn}
+                  className={secondaryBtn}
                   disabled={targetIdx < 0 || targetIdx >= items.length - 1 || reorderPuzzlesMutation.isPending}
                   onClick={() => {
                     movePuzzle(target.id, 1);
@@ -1469,7 +1504,7 @@ export function PuzzlesCrudPage() {
                 </button>
                 <button
                   type="button"
-                  className={actionBtn}
+                  className={secondaryBtn}
                   onClick={() => {
                     close();
                     navigate(
@@ -1482,35 +1517,7 @@ export function PuzzlesCrudPage() {
                 </button>
                 <button
                   type="button"
-                  className={actionBtn}
-                  onClick={() => {
-                    close();
-                    setAssignSuccess(null);
-                    setAssignError(null);
-                    setAssignMode("new");
-                    setAssignPracticeLimit("");
-                    setAssignDueInHours("");
-                    setAssignStudentId("");
-                    setAssignOpenForPuzzleId(target.id);
-                  }}
-                >
-                  <UserPlus className="h-4 w-4 text-indigo-600" />
-                  Tayinlash
-                </button>
-                <button
-                  type="button"
-                  className={actionBtn}
-                  onClick={() => {
-                    close();
-                    startEdit(target);
-                  }}
-                >
-                  <Pencil className="h-4 w-4 text-slate-500" />
-                  Tahrirlash
-                </button>
-                <button
-                  type="button"
-                  className={actionBtn + " !text-red-600"}
+                  className={secondaryBtn + " !text-red-600"}
                   onClick={() => {
                     close();
                     void remove(target.id);

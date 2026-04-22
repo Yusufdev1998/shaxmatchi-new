@@ -13,6 +13,16 @@ export type Level = { id: string; name: string; createdAt: string };
 export type Course = { id: string; debutLevelId: string; name: string; createdAt: string };
 export type Module = { id: string; courseId: string; name: string; createdAt: string };
 export type Task = { id: string; moduleId: string; name: string; createdAt: string };
+export type TaskWithPath = {
+  taskId: string;
+  taskName: string;
+  moduleId: string;
+  moduleName: string;
+  courseId: string;
+  courseName: string;
+  levelId: string;
+  levelName: string;
+};
 /** Board overlay for a move’s explanation (stored with the move in JSON). */
 export type PuzzleBoardCircle = { square: string; color?: string };
 export type PuzzleBoardArrow = { startSquare: string; endSquare: string; color?: string };
@@ -111,6 +121,7 @@ export const adminDebutsApi = {
     api<{ ok: true }>(`/admin/debuts/levels/${levelId}/courses/${courseId}/modules/${moduleId}/tasks/${taskId}`, {
       method: "DELETE",
     }),
+  listAllTasks: () => api<TaskWithPath[]>(`/admin/debuts/all-tasks`),
 
   // puzzles
   listPuzzles: (levelId: string, courseId: string, moduleId: string, taskId: string) =>

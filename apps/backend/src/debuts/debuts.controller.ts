@@ -134,6 +134,12 @@ export class DebutsController {
     return this.debuts.deleteTask(levelId, courseId, moduleId, taskId);
   }
 
+  /** Flat list across the whole hierarchy — for pickers (e.g. exam task selection). */
+  @Get("all-tasks")
+  listAllTasks() {
+    return this.debuts.listAllTasksWithPath();
+  }
+
   // Puzzles
   @Get("levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles")
   listPuzzles(

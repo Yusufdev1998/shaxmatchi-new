@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@shaxmatchi/ui";
-import { BookOpen, ChevronLeft, Download, Dumbbell, LogOut, Home, Swords, RefreshCw } from "lucide-react";
+import { BookOpen, ChevronLeft, Download, Dumbbell, GraduationCap, LogOut, Home, Swords, RefreshCw } from "lucide-react";
 import { clearAuthSession, getAuthToken, getAuthUser } from "../auth/auth";
 import { isTelegramMiniApp } from "../auth/telegram";
 import { getPwaUpdateFn, subscribePwaUpdate } from "../pwaUpdate";
@@ -132,6 +132,9 @@ export function AppLayout() {
                   </Link>
                   <Link className="hover:text-slate-900" to="/debut">
                     <Swords className="mr-0.5 inline h-3 w-3" /> Debyutlar
+                  </Link>
+                  <Link className="hover:text-slate-900" to="/exams">
+                    <GraduationCap className="mr-0.5 inline h-3 w-3" /> Imtihonlar
                   </Link>
                 </div>
               </div>

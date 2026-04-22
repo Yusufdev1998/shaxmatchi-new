@@ -11,6 +11,8 @@ import { PuzzlePracticePage } from "./pages/PuzzlesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { UsersPage } from "./pages/UsersPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ExamsPage } from "./pages/ExamsPage";
+import { ExamEditPage } from "./pages/ExamEditPage";
 import { StatisticsLayout } from "./layouts/StatisticsLayout";
 import { StatisticsIndexPage } from "./pages/stats/StatisticsIndexPage";
 import { LearningTimeStatsPage } from "./pages/stats/LearningTimeStatsPage";
@@ -35,6 +37,9 @@ export const router = createBrowserRouter([
       { path: "debuts/levels/:levelId/courses/:courseId/modules/:moduleId/tasks", element: <TasksPage /> },
       { path: "debuts/levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles", element: <PuzzlesCrudPage /> },
       { path: "debuts/levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles/:puzzleId/practice", element: <PuzzlePracticePage /> },
+      { path: "exams", element: <ExamsPage /> },
+      { path: "exams/new", element: <ExamEditPage /> },
+      { path: "exams/:examId", element: <ExamEditPage /> },
       { path: "users", element: <UsersPage /> },
       {
         path: "stats",

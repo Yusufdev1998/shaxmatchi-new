@@ -13,6 +13,7 @@ import {
 export const userType = pgEnum("user_type", ["student", "teacher"]);
 export const puzzleAssignmentMode = pgEnum("puzzle_assignment_mode", ["new", "test"]);
 export const puzzleStudentSide = pgEnum("puzzle_student_side", ["white", "black"]);
+export const examAttemptStatus = pgEnum("exam_attempt_status", ["in_progress", "passed", "failed"]);
 
 export const users = pgTable(
   "users",
@@ -169,3 +170,85 @@ export const appSettings = pgTable("app_settings", {
 
 export type AppSettings = typeof appSettings.$inferSelect;
 export type NewAppSettings = typeof appSettings.$inferInsert;
+
+export const exams = pgTable("exams", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** Per-move time limit while taking the exam. */
+  secondsPerMove: integer("seconds_per_move").notNull(),
+  /** How many attempts each assigned student may start. */
+  attemptsAllowed: integer("attempts_allowed").notNull(),
+  /** Number of puzzles picked (randomly) from the exam's tasks for each attempt. */
+  puzzleCount: integer("puzzle_count").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type Exam = typeof exams.$inferSelect;
+export type NewExam = typeof exams.$inferInsert;
+
+export const examTasks = pgTable(
+  "exam_tasks",
+  {
+    examId: uuid("exam_id")
+      .notNull()
+      .references(() => exams.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+  },
+  (t) => ({
+    examTaskUnique: uniqueIndex("exam_tasks_exam_task_unique").on(t.examId, t.taskId),
+  }),
+);
+
+export type ExamTask = typeof examTasks.$inferSelect;
+export type NewExamTask = typeof examTasks.$inferInsert;
+
+export const examAssignments = pgTable(
+  "exam_assignments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    examId: uuid("exam_id")
+      .notNull()
+      .references(() => exams.id, { onDelete: "cascade" }),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Finished attempts (passed or failed). Incremented by the student app. */
+    attemptsUsed: integer("attempts_used").notNull().default(0),
+    assignedAt: timestamp("assigned_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    examStudentUnique: uniqueIndex("exam_assignments_exam_student_unique").on(t.examId, t.studentId),
+  }),
+);
+
+export type ExamAssignment = typeof examAssignments.$inferSelect;
+export type NewExamAssignment = typeof examAssignments.$inferInsert;
+
+export const examAttempts = pgTable("exam_attempts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  assignmentId: uuid("assignment_id")
+    .notNull()
+    .references(() => examAssignments.id, { onDelete: "cascade" }),
+  /** Frozen puzzle ids (in order) picked at attempt start. */
+  puzzleIds: jsonb("puzzle_ids").notNull(),
+  status: examAttemptStatus("status").notNull().default("in_progress"),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
+export type ExamAttempt = typeof examAttempts.$inferSelect;
+export type NewExamAttempt = typeof examAttempts.$inferInsert;

@@ -7,7 +7,8 @@ export type AuthUser = {
 const TOKEN_KEY = "shaxmatchi_token";
 const USER_KEY = "shaxmatchi_user";
 
-export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+export const API_URL: string =
+  import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -32,4 +33,3 @@ export function clearAuthSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
 }
-

@@ -192,6 +192,32 @@ export class DebutsService {
     return { ok: true };
   }
 
+  /** Flat list of all tasks with their full debut hierarchy path, for cross-hierarchy pickers (e.g. exams). */
+  async listAllTasksWithPath() {
+    const db = this.getDb();
+    return db
+      .select({
+        taskId: tasks.id,
+        taskName: tasks.name,
+        moduleId: modules.id,
+        moduleName: modules.name,
+        courseId: courses.id,
+        courseName: courses.name,
+        levelId: debutLevels.id,
+        levelName: debutLevels.name,
+      })
+      .from(tasks)
+      .innerJoin(modules, eq(modules.id, tasks.moduleId))
+      .innerJoin(courses, eq(courses.id, modules.courseId))
+      .innerJoin(debutLevels, eq(debutLevels.id, courses.debutLevelId))
+      .orderBy(
+        asc(debutLevels.createdAt),
+        asc(courses.createdAt),
+        asc(modules.createdAt),
+        asc(tasks.createdAt),
+      );
+  }
+
   // Puzzles
   private async getTask(levelId: string, courseId: string, moduleId: string, taskId: string) {
     await this.getModule(levelId, courseId, moduleId);

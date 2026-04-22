@@ -1,6 +1,6 @@
 import { Button } from "@shaxmatchi/ui";
 import { Link } from "react-router-dom";
-import { Swords } from "lucide-react";
+import { Swords, GraduationCap } from "lucide-react";
 
 export function HomePage() {
   return (
@@ -18,6 +18,18 @@ export function HomePage() {
         <div className="mt-4">
           <Button asChild className="w-full sm:w-auto" variant="secondary">
             <Link to="/debut"><Swords className="mr-1.5 h-4 w-4" /> Debyutlar (tayinlangan)</Link>
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <h2 className="text-base font-semibold">Imtihonlar</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          O'qituvchi tayinlagan imtihonlar. Har yurish uchun vaqt cheklangan.
+        </p>
+        <div className="mt-4">
+          <Button asChild className="w-full sm:w-auto" variant="secondary">
+            <Link to="/exams"><GraduationCap className="mr-1.5 h-4 w-4" /> Imtihonlar</Link>
           </Button>
         </div>
       </div>

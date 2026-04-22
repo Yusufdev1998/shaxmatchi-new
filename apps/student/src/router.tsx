@@ -12,6 +12,9 @@ import { LessonsPage } from "./pages/LessonsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { ExamsPage } from "./pages/ExamsPage";
+import { ExamDetailPage } from "./pages/ExamDetailPage";
+import { ExamTakePage } from "./pages/ExamTakePage";
 
 export const router = createBrowserRouter([
   {
@@ -31,6 +34,9 @@ export const router = createBrowserRouter([
       { path: "debut/levels/:levelId/courses/:courseId/modules/:moduleId/tasks", element: <DebutTasksPage /> },
       { path: "debut/levels/:levelId/courses/:courseId/modules/:moduleId/tasks/:taskId/puzzles", element: <DebutPuzzlesPage /> },
       { path: "puzzle/:id", element: <PuzzlePage /> },
+      { path: "exams", element: <ExamsPage /> },
+      { path: "exams/:examId", element: <ExamDetailPage /> },
+      { path: "exams/:examId/take/:attemptId", element: <ExamTakePage /> },
       { path: "lessons", element: <LessonsPage /> },
       { path: "profile", element: <ProfilePage /> }
     ]

@@ -7,7 +7,8 @@ export type AuthUser = {
 const TOKEN_KEY = "shaxmatchi_token";
 const USER_KEY = "shaxmatchi_user";
 
-export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+export const API_URL: string =
+  import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -38,7 +39,10 @@ function handleUnauthorized() {
   window.location.replace("/login");
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
   const token = getAuthToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -54,7 +58,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const error = new Error(text || `HTTP ${res.status}`) as Error & { status?: number };
+    const error = new Error(text || `HTTP ${res.status}`) as Error & {
+      status?: number;
+    };
     error.status = res.status;
     throw error;
   }
@@ -76,10 +82,11 @@ export async function apiUploadFetch<T>(path: string, file: File): Promise<T> {
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const error = new Error(text || `HTTP ${res.status}`) as Error & { status?: number };
+    const error = new Error(text || `HTTP ${res.status}`) as Error & {
+      status?: number;
+    };
     error.status = res.status;
     throw error;
   }
   return (await res.json()) as T;
 }
-
