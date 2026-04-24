@@ -745,15 +745,10 @@ export function PuzzlePage() {
               </p>
             ) : null}
             {moveIdx > 0 ? (
-              <>
-                <div className="font-mono text-xs text-slate-500">
-                  Yurish {Math.min(moveIdx, puzzleMoves.length)}:{" "}
-                  {puzzleMoves[Math.min(moveIdx, puzzleMoves.length) - 1]?.san}
-                </div>
-                <div className="mt-2 font-mono text-xs text-slate-600">
-                  {puzzleMoves.map((m) => m.san).join(" ")}
-                </div>
-              </>
+              <div className="font-mono text-xs text-slate-500">
+                Yurish {Math.min(moveIdx, puzzleMoves.length)}:{" "}
+                {puzzleMoves[Math.min(moveIdx, puzzleMoves.length) - 1]?.san}
+              </div>
             ) : null}
           </div>
         </div>
