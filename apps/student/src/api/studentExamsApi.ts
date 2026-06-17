@@ -61,14 +61,29 @@ export type StudentExamAttemptStart = {
   puzzles: StudentExamAttemptPuzzle[];
 };
 
+export type ExamAttemptFailDetail = {
+  puzzleId: string;
+  puzzleName: string;
+  puzzleIndex: number;
+  moveIndex: number;
+  moveNumber: number;
+  reason: "wrong" | "timeout";
+  playedSan: string | null;
+  expectedSan: string | null;
+};
+
 export const studentExamsApi = {
   list: () => api<StudentExamSummary[]>(`/student/exams`),
   get: (examId: string) => api<StudentExamDetail>(`/student/exams/${examId}`),
   startAttempt: (examId: string) =>
     api<StudentExamAttemptStart>(`/student/exams/${examId}/attempts`, { method: "POST" }),
-  finalizeAttempt: (attemptId: string, result: "passed" | "failed") =>
+  finalizeAttempt: (
+    attemptId: string,
+    result: "passed" | "failed",
+    failDetail?: ExamAttemptFailDetail,
+  ) =>
     api<{ ok: true; status: StudentExamAttemptStatus }>(
       `/student/exams/attempts/${attemptId}`,
-      { method: "PATCH", body: JSON.stringify({ result }) },
+      { method: "PATCH", body: JSON.stringify({ result, failDetail }) },
     ),
 };

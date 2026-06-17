@@ -135,6 +135,28 @@ export class ExamsService {
       .orderBy(desc(examAssignments.assignedAt));
   }
 
+  async listAssignmentAttempts(examId: string, assignmentId: string) {
+    const db = this.getDb();
+    const rows = await db
+      .select({ id: examAssignments.id })
+      .from(examAssignments)
+      .where(and(eq(examAssignments.id, assignmentId), eq(examAssignments.examId, examId)))
+      .limit(1);
+    if (!rows[0]) throw new NotFoundException("Assignment not found");
+
+    return db
+      .select({
+        id: examAttempts.id,
+        status: examAttempts.status,
+        failDetail: examAttempts.failDetail,
+        startedAt: examAttempts.startedAt,
+        completedAt: examAttempts.completedAt,
+      })
+      .from(examAttempts)
+      .where(eq(examAttempts.assignmentId, assignmentId))
+      .orderBy(desc(examAttempts.startedAt));
+  }
+
   async assignExam(input: { examId: string; teacherId: string; studentIds: string[] }) {
     const db = this.getDb();
     const exam = await this.getExam(input.examId);

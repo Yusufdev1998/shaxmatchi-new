@@ -24,6 +24,25 @@ export type ExamAssignment = {
   lastResult: "passed" | "failed" | null;
 };
 
+export type ExamAttemptFailDetail = {
+  puzzleId: string;
+  puzzleName: string;
+  puzzleIndex: number;
+  moveIndex: number;
+  moveNumber: number;
+  reason: "wrong" | "timeout";
+  playedSan: string | null;
+  expectedSan: string | null;
+};
+
+export type ExamAttemptRecord = {
+  id: string;
+  status: "in_progress" | "passed" | "failed";
+  failDetail: ExamAttemptFailDetail | null;
+  startedAt: string;
+  completedAt: string | null;
+};
+
 export type ExamInput = {
   name: string;
   secondsPerMove: number;
@@ -47,6 +66,10 @@ export const adminExamsApi = {
 
   listAssignments: (examId: string) =>
     api<ExamAssignment[]>(`/admin/exams/${examId}/assignments`),
+  listAttempts: (examId: string, assignmentId: string) =>
+    api<ExamAttemptRecord[]>(
+      `/admin/exams/${examId}/assignments/${assignmentId}/attempts`,
+    ),
   assign: (examId: string, studentIds: string[]) =>
     api<{ created: number; updated: number }>(`/admin/exams/${examId}/assignments`, {
       method: "POST",

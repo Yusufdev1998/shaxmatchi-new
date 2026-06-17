@@ -53,6 +53,14 @@ export class ExamsController {
     return this.exams.listExamAssignments(examId);
   }
 
+  @Get(":examId/assignments/:assignmentId/attempts")
+  listAssignmentAttempts(
+    @Param("examId") examId: string,
+    @Param("assignmentId") assignmentId: string,
+  ) {
+    return this.exams.listAssignmentAttempts(examId, assignmentId);
+  }
+
   @Post(":examId/assignments")
   assign(
     @Req() req: { user: JwtUserPayload },

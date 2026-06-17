@@ -106,6 +106,13 @@
       "when": 1776853325467,
       "tag": "0014_light_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1781675564112,
+      "tag": "0015_past_silvermane",
+      "breakpoints": true
     }
   ]
 }

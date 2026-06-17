@@ -14,6 +14,7 @@ import {
   examTasks,
   exams,
   puzzles,
+  type ExamAttemptFailDetail,
 } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
 
@@ -227,6 +228,7 @@ export class StudentExamsService {
     attemptId: string;
     studentId: string;
     result: "passed" | "failed";
+    failDetail?: ExamAttemptFailDetail;
   }) {
     const db = this.getDb();
     const rows = await db
@@ -251,7 +253,11 @@ export class StudentExamsService {
 
     await db
       .update(examAttempts)
-      .set({ status: input.result, completedAt: new Date() })
+      .set({
+        status: input.result,
+        completedAt: new Date(),
+        failDetail: input.result === "failed" ? (input.failDetail ?? null) : null,
+      })
       .where(eq(examAttempts.id, input.attemptId));
     await db
       .update(examAssignments)

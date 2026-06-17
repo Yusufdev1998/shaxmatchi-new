@@ -2,8 +2,12 @@ import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, TruncatedText } from "@shaxmatchi/ui";
-import { Check, Trash2, Search, UserPlus, X } from "lucide-react";
-import { adminExamsApi, type ExamAssignment, type ExamInput } from "../api/adminExamsApi";
+import { Check, ChevronDown, ChevronRight, Trash2, Search, UserPlus, X } from "lucide-react";
+import {
+  adminExamsApi,
+  type ExamAssignment,
+  type ExamInput,
+} from "../api/adminExamsApi";
 import { adminDebutsApi, type TaskWithPath } from "../api/adminDebutsApi";
 import { adminUsersApi, type Student } from "../api/adminUsersApi";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
@@ -28,6 +32,11 @@ export function ExamEditPage() {
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const [form, setForm] = React.useState<ExamInput>(DEFAULT_FORM);
+  const [nums, setNums] = React.useState({
+    secondsPerMove: String(DEFAULT_FORM.secondsPerMove),
+    attemptsAllowed: String(DEFAULT_FORM.attemptsAllowed),
+    puzzleCount: String(DEFAULT_FORM.puzzleCount),
+  });
   const [taskSearch, setTaskSearch] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState<string | null>(null);
@@ -35,6 +44,7 @@ export function ExamEditPage() {
   const [assignSearch, setAssignSearch] = React.useState("");
   const [assignSelected, setAssignSelected] = React.useState<Set<string>>(new Set());
   const [assignError, setAssignError] = React.useState<string | null>(null);
+  const [expandedAssignment, setExpandedAssignment] = React.useState<string | null>(null);
 
   const examQuery = useQuery({
     queryKey: ["adminExam", examId],
@@ -62,6 +72,11 @@ export function ExamEditPage() {
   React.useEffect(() => {
     if (isNew) {
       setForm(DEFAULT_FORM);
+      setNums({
+        secondsPerMove: String(DEFAULT_FORM.secondsPerMove),
+        attemptsAllowed: String(DEFAULT_FORM.attemptsAllowed),
+        puzzleCount: String(DEFAULT_FORM.puzzleCount),
+      });
       return;
     }
     if (examQuery.data) {
@@ -71,6 +86,11 @@ export function ExamEditPage() {
         attemptsAllowed: examQuery.data.attemptsAllowed,
         puzzleCount: examQuery.data.puzzleCount,
         taskIds: examQuery.data.taskIds ?? [],
+      });
+      setNums({
+        secondsPerMove: String(examQuery.data.secondsPerMove),
+        attemptsAllowed: String(examQuery.data.attemptsAllowed),
+        puzzleCount: String(examQuery.data.puzzleCount),
       });
     }
   }, [isNew, examQuery.data]);
@@ -147,12 +167,15 @@ export function ExamEditPage() {
       setError("Kamida bitta vazifa tanlang.");
       return;
     }
-    if (form.secondsPerMove < 1 || form.attemptsAllowed < 1 || form.puzzleCount < 1) {
+    const secondsPerMove = Math.round(Number(nums.secondsPerMove));
+    const attemptsAllowed = Math.round(Number(nums.attemptsAllowed));
+    const puzzleCount = Math.round(Number(nums.puzzleCount));
+    if (![secondsPerMove, attemptsAllowed, puzzleCount].every((n) => Number.isFinite(n) && n >= 1)) {
       setError("Barcha raqamlar 1 yoki undan katta bo'lishi kerak.");
       return;
     }
     try {
-      const payload = { ...form, name };
+      const payload = { ...form, name, secondsPerMove, attemptsAllowed, puzzleCount };
       if (isNew) await createMutation.mutateAsync(payload);
       else {
         await updateMutation.mutateAsync(payload);
@@ -257,13 +280,12 @@ export function ExamEditPage() {
               <span className="text-xs font-medium text-slate-700">Har yurishga (sekund)</span>
               <input
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={3600}
                 className={debutsUi.input}
-                value={form.secondsPerMove}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, secondsPerMove: Math.max(1, Math.round(Number(e.target.value) || 0)) }))
-                }
+                value={nums.secondsPerMove}
+                onChange={(e) => setNums((n) => ({ ...n, secondsPerMove: e.target.value }))}
                 disabled={busy}
               />
             </label>
@@ -271,13 +293,12 @@ export function ExamEditPage() {
               <span className="text-xs font-medium text-slate-700">Urinishlar soni</span>
               <input
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={100}
                 className={debutsUi.input}
-                value={form.attemptsAllowed}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, attemptsAllowed: Math.max(1, Math.round(Number(e.target.value) || 0)) }))
-                }
+                value={nums.attemptsAllowed}
+                onChange={(e) => setNums((n) => ({ ...n, attemptsAllowed: e.target.value }))}
                 disabled={busy}
               />
             </label>
@@ -285,13 +306,12 @@ export function ExamEditPage() {
               <span className="text-xs font-medium text-slate-700">Pazllar soni</span>
               <input
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={100}
                 className={debutsUi.input}
-                value={form.puzzleCount}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, puzzleCount: Math.max(1, Math.round(Number(e.target.value) || 0)) }))
-                }
+                value={nums.puzzleCount}
+                onChange={(e) => setNums((n) => ({ ...n, puzzleCount: e.target.value }))}
                 disabled={busy}
               />
             </label>
@@ -411,38 +431,60 @@ export function ExamEditPage() {
             <div className={debutsUi.empty}>Hali hech kimga tayinlanmagan.</div>
           ) : (
             <div className={debutsUi.listRows}>
-              {assignments.map((a) => (
-                <div key={a.id} className={debutsUi.row}>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <TruncatedText text={a.studentLogin} className="text-sm font-medium text-slate-900" />
-                      {a.lastResult === "passed" ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
-                          Oxirgi: O'tdi
+              {assignments.map((a) => {
+                const expanded = expandedAssignment === a.id;
+                return (
+                  <div key={a.id}>
+                    <div className={debutsUi.row}>
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                        onClick={() => setExpandedAssignment(expanded ? null : a.id)}
+                        title={expanded ? "Yopish" : "Urinishlarni ko'rish"}
+                      >
+                        <span className="mt-0.5 shrink-0 text-slate-400">
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
                         </span>
-                      ) : a.lastResult === "failed" ? (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">
-                          Oxirgi: O'tmadi
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <TruncatedText text={a.studentLogin} className="text-sm font-medium text-slate-900" />
+                            {a.lastResult === "passed" ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                Oxirgi: O'tdi
+                              </span>
+                            ) : a.lastResult === "failed" ? (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">
+                                Oxirgi: O'tmadi
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                            <span>Urinishlar: {a.attemptsUsed} / {form.attemptsAllowed}</span>
+                            <span className="text-emerald-700">✓ {a.passed}</span>
+                            <span className="text-red-700">✗ {a.failed}</span>
+                          </span>
                         </span>
-                      ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        className={debutsUi.dangerBtn}
+                        title="Bekor qilish"
+                        disabled={busy}
+                        onClick={() => void unassign(a.id, a.studentLogin)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
-                      <span>Urinishlar: {a.attemptsUsed} / {form.attemptsAllowed}</span>
-                      <span className="text-emerald-700">✓ {a.passed}</span>
-                      <span className="text-red-700">✗ {a.failed}</span>
-                    </div>
+                    {expanded ? (
+                      <AssignmentAttempts examId={examId!} assignmentId={a.id} />
+                    ) : null}
                   </div>
-                  <button
-                    type="button"
-                    className={debutsUi.dangerBtn}
-                    title="Bekor qilish"
-                    disabled={busy}
-                    onClick={() => void unassign(a.id, a.studentLogin)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -540,6 +582,93 @@ export function ExamEditPage() {
       ) : null}
 
       {confirmDialog}
+    </div>
+  );
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("uz-UZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function AssignmentAttempts({ examId, assignmentId }: { examId: string; assignmentId: string }) {
+  const query = useQuery({
+    queryKey: ["adminExam", "attempts", assignmentId],
+    queryFn: () => adminExamsApi.listAttempts(examId, assignmentId),
+  });
+
+  if (query.isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 pl-9 text-xs text-slate-500">
+        <InlineSpinner />
+        Yuklanmoqda…
+      </div>
+    );
+  }
+  const attempts = query.data ?? [];
+  if (attempts.length === 0) {
+    return <div className="px-3 py-2 pl-9 text-xs text-slate-500">Hali urinish yo'q.</div>;
+  }
+
+  return (
+    <div className="mb-1 ml-9 mr-2 mt-1 space-y-1.5 border-l border-slate-200 pl-3">
+      {attempts.map((at, i) => {
+        const label = `#${attempts.length - i}`;
+        return (
+          <div key={at.id} className="rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-1.5 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-slate-700">Urinish {label}</span>
+              {at.status === "passed" ? (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                  O'tdi
+                </span>
+              ) : at.status === "failed" ? (
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">
+                  O'tmadi
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                  Jarayonda
+                </span>
+              )}
+              <span className="text-slate-400">{formatDateTime(at.startedAt)}</span>
+            </div>
+            {at.status === "failed" ? (
+              at.failDetail ? (
+                <div className="mt-1 text-slate-600">
+                  <span className="font-medium text-slate-800">
+                    Pazl {at.failDetail.puzzleIndex + 1}: {at.failDetail.puzzleName}
+                  </span>
+                  <span className="text-slate-400"> — {at.failDetail.moveNumber}-yurish</span>
+                  <div className="mt-0.5">
+                    {at.failDetail.reason === "timeout" ? (
+                      <span className="text-red-700">Vaqt tugadi</span>
+                    ) : (
+                      <span className="text-red-700">
+                        Xato yurish: <span className="font-mono">{at.failDetail.playedSan ?? "—"}</span>
+                      </span>
+                    )}
+                    {at.failDetail.expectedSan ? (
+                      <span className="text-slate-500">
+                        {" "}
+                        · To'g'risi: <span className="font-mono text-emerald-700">{at.failDetail.expectedSan}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-1 text-slate-400">Tafsilot yo'q (tashlab ketilgan).</div>
+              )
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

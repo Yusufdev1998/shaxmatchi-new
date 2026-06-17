@@ -7,6 +7,7 @@ import type { PieceDropHandlerArgs } from "react-chessboard";
 import { CheckCircle, Timer, XCircle } from "lucide-react";
 import {
   studentExamsApi,
+  type ExamAttemptFailDetail,
   type StudentExamAttemptPuzzle,
   type StudentExamAttemptStart,
 } from "../api/studentExamsApi";
@@ -44,8 +45,8 @@ export function ExamTakePage() {
   ]);
 
   const finalizeMutation = useMutation({
-    mutationFn: (result: "passed" | "failed") =>
-      studentExamsApi.finalizeAttempt(attemptId!, result),
+    mutationFn: (args: { result: "passed" | "failed"; failDetail?: ExamAttemptFailDetail }) =>
+      studentExamsApi.finalizeAttempt(attemptId!, args.result, args.failDetail),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["studentExam", examId] });
       await queryClient.invalidateQueries({ queryKey: ["studentExams"] });
@@ -69,10 +70,12 @@ export function ExamTakePage() {
   const finalizeRef = React.useRef(finalizeMutation);
   finalizeRef.current = finalizeMutation;
 
-  const failRef = React.useRef<(reason: "wrong" | "timeout") => void>(() => {});
+  const failRef = React.useRef<(reason: "wrong" | "timeout", playedSan?: string) => void>(
+    () => {},
+  );
   const passRef = React.useRef<() => void>(() => {});
 
-  failRef.current = (_reason) => {
+  failRef.current = (reason, playedSan) => {
     if (statusRef.current !== "in_progress") return;
     setStatus("failed");
     statusRef.current = "failed";
@@ -80,13 +83,25 @@ export function ExamTakePage() {
       window.clearTimeout(opponentTimerRef.current);
       opponentTimerRef.current = null;
     }
-    finalizeRef.current.mutate("failed");
+    const failDetail: ExamAttemptFailDetail | undefined = puzzle
+      ? {
+          puzzleId: puzzle.id,
+          puzzleName: puzzle.name,
+          puzzleIndex: puzzleIdx,
+          moveIndex: moveIdx,
+          moveNumber: Math.floor(moveIdx / 2) + 1,
+          reason,
+          playedSan: playedSan ?? null,
+          expectedSan: puzzle.moves[moveIdx]?.san ?? null,
+        }
+      : undefined;
+    finalizeRef.current.mutate({ result: "failed", failDetail });
   };
   passRef.current = () => {
     if (statusRef.current !== "in_progress") return;
     setStatus("passed");
     statusRef.current = "passed";
-    finalizeRef.current.mutate("passed");
+    finalizeRef.current.mutate({ result: "passed" });
   };
 
   // Reset board at the start of each puzzle.
@@ -197,7 +212,7 @@ export function ExamTakePage() {
       }
       if (!trialMove) return false;
       if (trialMove.san !== expected) {
-        failRef.current("wrong");
+        failRef.current("wrong", trialMove.san);
         return false;
       }
       setGame(trial);

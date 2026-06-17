@@ -236,6 +236,25 @@ export const examAssignments = pgTable(
 export type ExamAssignment = typeof examAssignments.$inferSelect;
 export type NewExamAssignment = typeof examAssignments.$inferInsert;
 
+/** Where a failed exam attempt went wrong — stored on the attempt for teacher review. */
+export type ExamAttemptFailDetail = {
+  /** Puzzle (variant) the student failed on. */
+  puzzleId: string;
+  puzzleName: string;
+  /** 0-based position of the puzzle within the attempt's frozen list. */
+  puzzleIndex: number;
+  /** 0-based ply index where the student went wrong. */
+  moveIndex: number;
+  /** 1-based full-move number for display (e.g. move 3). */
+  moveNumber: number;
+  /** Whether the student played a wrong move or ran out of time. */
+  reason: "wrong" | "timeout";
+  /** The move the student played (null on timeout). */
+  playedSan: string | null;
+  /** The move that was expected at that point. */
+  expectedSan: string | null;
+};
+
 export const examAttempts = pgTable("exam_attempts", {
   id: uuid("id").defaultRandom().primaryKey(),
   assignmentId: uuid("assignment_id")
@@ -244,6 +263,8 @@ export const examAttempts = pgTable("exam_attempts", {
   /** Frozen puzzle ids (in order) picked at attempt start. */
   puzzleIds: jsonb("puzzle_ids").notNull(),
   status: examAttemptStatus("status").notNull().default("in_progress"),
+  /** Set when status becomes `failed` via a wrong move / timeout; null for abandoned or passed. */
+  failDetail: jsonb("fail_detail").$type<ExamAttemptFailDetail>(),
   startedAt: timestamp("started_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
