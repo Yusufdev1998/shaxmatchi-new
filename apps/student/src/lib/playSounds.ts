@@ -49,3 +49,46 @@ export function playAchievementSound(): void {
 export function playGameStartSound(): void {
   playOneShot(gameStartUrl, 0.42);
 }
+
+let beepCtx: AudioContext | null = null;
+
+function getBeepCtx(): AudioContext | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const Ctx =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    if (!beepCtx) beepCtx = new Ctx();
+    if (beepCtx.state === "suspended") void beepCtx.resume().catch(() => undefined);
+    return beepCtx;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Short countdown beep synthesised via Web Audio (no asset needed).
+ * `urgent` raises pitch/volume for the final seconds.
+ */
+export function playCountdownBeep(urgent = false): void {
+  try {
+    const ctx = getBeepCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = urgent ? 950 : 700;
+    const peak = urgent ? 0.3 : 0.2;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+  } catch {
+    /* ignore */
+  }
+}

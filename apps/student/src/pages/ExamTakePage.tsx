@@ -11,6 +11,15 @@ import {
   type StudentExamAttemptPuzzle,
   type StudentExamAttemptStart,
 } from "../api/studentExamsApi";
+import {
+  playAchievementSound,
+  playCountdownBeep,
+  playFailSound,
+  playMoveSound,
+} from "../lib/playSounds";
+
+/** How long the wrong move is flashed on the board before advancing to the next puzzle. */
+const WRONG_FLASH_MS = 900;
 
 /** Ms delay before auto-playing an opponent move — matches the practice-mode feel. */
 const OPPONENT_MOVE_DELAY_MS = 450;
@@ -58,9 +67,18 @@ export function ExamTakePage() {
   const [game, setGame] = React.useState(() => new Chess());
   const [status, setStatus] = React.useState<Status>("in_progress");
   const [secondsLeft, setSecondsLeft] = React.useState<number>(attempt?.secondsPerMove ?? 0);
+  const [isTransitioning, setIsTransitioning] = React.useState(false);
   const opponentTimerRef = React.useRef<number | null>(null);
+  const advanceTimerRef = React.useRef<number | null>(null);
+  const boardWrapRef = React.useRef<HTMLDivElement | null>(null);
   const statusRef = React.useRef<Status>("in_progress");
   statusRef.current = status;
+  // True while flashing a wrong move before advancing — blocks input/timer/opponent.
+  const transitioningRef = React.useRef(false);
+  // A single wrong move no longer ends the exam; we remember whether any puzzle was
+  // missed and only fail the attempt at the end. `firstFailRef` keeps the first slip.
+  const hadMistakeRef = React.useRef(false);
+  const firstFailRef = React.useRef<ExamAttemptFailDetail | null>(null);
 
   const puzzle = attempt?.puzzles[puzzleIdx];
   const totalPuzzles = attempt?.puzzles.length ?? 0;
@@ -70,38 +88,93 @@ export function ExamTakePage() {
   const finalizeRef = React.useRef(finalizeMutation);
   finalizeRef.current = finalizeMutation;
 
-  const failRef = React.useRef<(reason: "wrong" | "timeout", playedSan?: string) => void>(
-    () => {},
-  );
-  const passRef = React.useRef<() => void>(() => {});
+  const triggerWrongFeedback = React.useCallback(() => {
+    playFailSound();
+    try {
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate([35, 45, 35]);
+      }
+    } catch {
+      /* ignore */
+    }
+    const el = boardWrapRef.current;
+    if (!el) return;
+    el.classList.remove("animate-board-shake");
+    void el.offsetWidth;
+    el.classList.add("animate-board-shake");
+  }, []);
 
-  failRef.current = (reason, playedSan) => {
+  const finishRef = React.useRef<() => void>(() => {});
+  const advanceRef = React.useRef<() => void>(() => {});
+  const failPuzzleRef = React.useRef<
+    (reason: "wrong" | "timeout", playedSan?: string, trialFen?: string) => void
+  >(() => {});
+
+  finishRef.current = () => {
     if (statusRef.current !== "in_progress") return;
-    setStatus("failed");
-    statusRef.current = "failed";
+    const passed = !hadMistakeRef.current;
+    const nextStatus: Status = passed ? "passed" : "failed";
+    setStatus(nextStatus);
+    statusRef.current = nextStatus;
     if (opponentTimerRef.current) {
       window.clearTimeout(opponentTimerRef.current);
       opponentTimerRef.current = null;
     }
-    const failDetail: ExamAttemptFailDetail | undefined = puzzle
-      ? {
-          puzzleId: puzzle.id,
-          puzzleName: puzzle.name,
-          puzzleIndex: puzzleIdx,
-          moveIndex: moveIdx,
-          moveNumber: Math.floor(moveIdx / 2) + 1,
-          reason,
-          playedSan: playedSan ?? null,
-          expectedSan: puzzle.moves[moveIdx]?.san ?? null,
-        }
-      : undefined;
-    finalizeRef.current.mutate({ result: "failed", failDetail });
+    if (passed) playAchievementSound();
+    finalizeRef.current.mutate({
+      result: nextStatus,
+      failDetail: passed ? undefined : firstFailRef.current ?? undefined,
+    });
   };
-  passRef.current = () => {
+
+  advanceRef.current = () => {
     if (statusRef.current !== "in_progress") return;
-    setStatus("passed");
-    statusRef.current = "passed";
-    finalizeRef.current.mutate({ result: "passed" });
+    if (puzzleIdx + 1 < totalPuzzles) {
+      setPuzzleIdx((i) => i + 1);
+    } else {
+      finishRef.current();
+    }
+  };
+
+  // Wrong move / timeout on a puzzle: flash feedback (same feel as practice), record the
+  // miss, then advance to the next puzzle instead of ending the exam.
+  failPuzzleRef.current = (reason, playedSan, trialFen) => {
+    if (statusRef.current !== "in_progress") return;
+    if (transitioningRef.current) return;
+    transitioningRef.current = true;
+    setIsTransitioning(true);
+    hadMistakeRef.current = true;
+    if (!firstFailRef.current && puzzle) {
+      firstFailRef.current = {
+        puzzleId: puzzle.id,
+        puzzleName: puzzle.name,
+        puzzleIndex: puzzleIdx,
+        moveIndex: moveIdx,
+        moveNumber: Math.floor(moveIdx / 2) + 1,
+        reason,
+        playedSan: playedSan ?? null,
+        expectedSan: puzzle.moves[moveIdx]?.san ?? null,
+      };
+    }
+    if (opponentTimerRef.current) {
+      window.clearTimeout(opponentTimerRef.current);
+      opponentTimerRef.current = null;
+    }
+    triggerWrongFeedback();
+    if (trialFen) {
+      // Briefly show the attempted wrong move before resetting to the next puzzle.
+      try {
+        setGame(new Chess(trialFen));
+      } catch {
+        /* ignore */
+      }
+    }
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = null;
+      transitioningRef.current = false;
+      setIsTransitioning(false);
+      advanceRef.current();
+    }, WRONG_FLASH_MS);
   };
 
   // Reset board at the start of each puzzle.
@@ -116,11 +189,12 @@ export function ExamTakePage() {
   React.useEffect(() => {
     if (!attempt || !puzzle) return;
     if (status !== "in_progress") return;
+    if (isTransitioning) return;
     if (moveIdx >= puzzle.moves.length) {
       if (puzzleIdx + 1 < totalPuzzles) {
         setPuzzleIdx((i) => i + 1);
       } else {
-        passRef.current();
+        finishRef.current();
       }
       return;
     }
@@ -129,6 +203,7 @@ export function ExamTakePage() {
     const expected = puzzle.moves[moveIdx]!.san;
     opponentTimerRef.current = window.setTimeout(() => {
       opponentTimerRef.current = null;
+      let moved = false;
       setGame((prev) => {
         const next = new Chess(prev.fen());
         try {
@@ -136,8 +211,10 @@ export function ExamTakePage() {
         } catch {
           return prev;
         }
+        moved = true;
         return next;
       });
+      if (moved) playMoveSound();
       setMoveIdx((i) => i + 1);
     }, OPPONENT_MOVE_DELAY_MS);
     return () => {
@@ -146,29 +223,40 @@ export function ExamTakePage() {
         opponentTimerRef.current = null;
       }
     };
-  }, [attempt, puzzle, puzzleIdx, moveIdx, totalPuzzles, status]);
+  }, [attempt, puzzle, puzzleIdx, moveIdx, totalPuzzles, status, isTransitioning]);
 
   // Per-move countdown (only while it's the student's turn).
   React.useEffect(() => {
     if (!attempt || !puzzle) return;
     if (status !== "in_progress") return;
+    if (isTransitioning) return;
     if (moveIdx >= puzzle.moves.length) return;
     if (!isStudentMoveAtIndex(puzzle, moveIdx)) return;
 
     const duration = attempt.secondsPerMove;
     setSecondsLeft(duration);
     const startedAt = Date.now();
+    let lastLeft = duration;
     const tick = window.setInterval(() => {
       const elapsed = Math.floor((Date.now() - startedAt) / 1000);
       const left = Math.max(0, duration - elapsed);
+      if (left !== lastLeft) {
+        lastLeft = left;
+        // A single warning beep at 10s, then a beep every second for the last 5.
+        if (left === 10) {
+          playCountdownBeep(false);
+        } else if (left >= 1 && left <= 5) {
+          playCountdownBeep(true);
+        }
+      }
       setSecondsLeft(left);
       if (left <= 0) {
         window.clearInterval(tick);
-        failRef.current("timeout");
+        failPuzzleRef.current("timeout");
       }
     }, 250);
     return () => window.clearInterval(tick);
-  }, [attempt, puzzle, moveIdx, status]);
+  }, [attempt, puzzle, moveIdx, status, isTransitioning]);
 
   // Warn on navigation while in progress.
   React.useEffect(() => {
@@ -180,6 +268,14 @@ export function ExamTakePage() {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [status]);
+
+  // Clear any pending wrong-move flash timer on unmount.
+  React.useEffect(
+    () => () => {
+      if (advanceTimerRef.current) window.clearTimeout(advanceTimerRef.current);
+    },
+    [],
+  );
 
   // After pass/fail, auto-navigate back to the exams list.
   const RESULT_MODAL_DURATION_MS = 3500;
@@ -195,6 +291,7 @@ export function ExamTakePage() {
     (args: PieceDropHandlerArgs): boolean => {
       if (!puzzle) return false;
       if (statusRef.current !== "in_progress") return false;
+      if (transitioningRef.current) return false;
       if (moveIdx >= puzzle.moves.length) return false;
       if (!isStudentMoveAtIndex(puzzle, moveIdx)) return false;
       const from = args.sourceSquare as string;
@@ -212,9 +309,11 @@ export function ExamTakePage() {
       }
       if (!trialMove) return false;
       if (trialMove.san !== expected) {
-        failRef.current("wrong", trialMove.san);
-        return false;
+        // Show the wrong move briefly, then move on to the next puzzle.
+        failPuzzleRef.current("wrong", trialMove.san, trial.fen());
+        return true;
       }
+      playMoveSound();
       setGame(trial);
       setMoveIdx((i) => i + 1);
       return true;
@@ -264,7 +363,18 @@ export function ExamTakePage() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className={!studentsTurn || status !== "in_progress" ? "pointer-events-none opacity-90" : ""}>
+        <div
+          ref={boardWrapRef}
+          onAnimationEnd={(e) => {
+            if (!e.animationName.includes("board-shake")) return;
+            e.currentTarget.classList.remove("animate-board-shake");
+          }}
+          className={`origin-center will-change-transform ${
+            !studentsTurn || status !== "in_progress" || isTransitioning
+              ? "pointer-events-none opacity-90"
+              : ""
+          }`}
+        >
           <BaseChessboard
             options={{
               position: game.fen(),
@@ -273,12 +383,18 @@ export function ExamTakePage() {
             }}
           />
         </div>
-        <div className="mt-2 text-center text-xs text-slate-500">
-          {status === "in_progress" && studentsTurn
-            ? "Yurishingizni qiling"
-            : status === "in_progress"
-              ? "Raqib yurmoqda…"
-              : null}
+        <div
+          className={`mt-2 text-center text-xs ${
+            isTransitioning ? "font-semibold text-red-600" : "text-slate-500"
+          }`}
+        >
+          {status !== "in_progress"
+            ? null
+            : isTransitioning
+              ? "Xato! Keyingi pazlga o'tilmoqda…"
+              : studentsTurn
+                ? "Yurishingizni qiling"
+                : "Raqib yurmoqda…"}
         </div>
       </div>
 

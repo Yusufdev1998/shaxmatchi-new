@@ -1,11 +1,12 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, Palette, Volume2 } from "lucide-react";
+import { Bell, BellOff, Lock, Palette, Volume2 } from "lucide-react";
 import { Button } from "@shaxmatchi/ui";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { InlineSpinner } from "../components/loading";
 import { adminAuthApi } from "../api/adminAuthApi";
 import { adminSettingsApi, type AppSettings } from "../api/adminSettingsApi";
+import { disablePush, enablePush, getPushState, type PushState } from "../lib/pwaPush";
 
 const inputClass =
   "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-400";
@@ -67,6 +68,55 @@ export function SettingsPage() {
       setLocalError(e instanceof Error ? e.message : "Parolni yangilab bo'lmadi");
     },
   });
+
+  const [pushState, setPushState] = React.useState<PushState | null>(null);
+  const [pushBusy, setPushBusy] = React.useState(false);
+  const [pushError, setPushError] = React.useState<string | null>(null);
+  const [pushSuccess, setPushSuccess] = React.useState<string | null>(null);
+
+  const refreshPushState = React.useCallback(async () => {
+    setPushState(await getPushState());
+  }, []);
+  React.useEffect(() => {
+    void refreshPushState();
+  }, [refreshPushState]);
+
+  async function onEnablePush() {
+    setPushError(null);
+    setPushSuccess(null);
+    setPushBusy(true);
+    try {
+      await enablePush();
+      setPushSuccess("Bildirishnomalar yoqildi.");
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      setPushError(
+        code === "permission-denied"
+          ? "Brauzer ruxsat bermadi. Brauzer sozlamalaridan bildirishnomaga ruxsat bering."
+          : code === "server-disabled"
+            ? "Server tomonida push sozlanmagan (VAPID kalitlari yo'q)."
+            : "Bildirishnomalarni yoqib bo'lmadi.",
+      );
+    } finally {
+      setPushBusy(false);
+      await refreshPushState();
+    }
+  }
+
+  async function onDisablePush() {
+    setPushError(null);
+    setPushSuccess(null);
+    setPushBusy(true);
+    try {
+      await disablePush();
+      setPushSuccess("Bildirishnomalar o'chirildi.");
+    } catch {
+      setPushError("Bildirishnomalarni o'chirib bo'lmadi.");
+    } finally {
+      setPushBusy(false);
+      await refreshPushState();
+    }
+  }
 
   function onSubmitPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -227,6 +277,70 @@ export function SettingsPage() {
               </Button>
             </div>
           </form>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="mb-3">
+          <div className="text-sm font-semibold">Bildirishnomalar</div>
+          <div className="text-sm text-slate-600">
+            Ilovaning yangi versiyasi chiqqanda push bildirishnoma oling — ilova yopiq bo'lsa ham.
+          </div>
+        </div>
+
+        {pushState && !pushState.supported ? (
+          <div className="text-sm text-slate-500">
+            Bu brauzer push bildirishnomalarni qo'llab-quvvatlamaydi.
+          </div>
+        ) : (
+          <div className="grid max-w-md gap-3">
+            <div className="text-sm text-slate-700">
+              Holat:{" "}
+              <span className={pushState?.subscribed ? "font-semibold text-emerald-700" : "font-semibold text-slate-600"}>
+                {pushState?.subscribed ? "yoqilgan" : "o'chirilgan"}
+              </span>
+              {pushState?.permission === "denied" ? " — brauzer ruxsatini bermagan" : ""}
+              {pushState && !pushState.serverEnabled ? " — server sozlanmagan" : ""}
+            </div>
+
+            {pushError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{pushError}</div>
+            )}
+            {pushSuccess && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                {pushSuccess}
+              </div>
+            )}
+
+            <div>
+              {pushState?.subscribed ? (
+                <Button
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                  disabled={pushBusy}
+                  onClick={onDisablePush}
+                >
+                  {pushBusy ? (
+                    <span className="inline-flex items-center gap-2"><InlineSpinner /> Bajarilmoqda…</span>
+                  ) : (
+                    <><BellOff className="mr-1.5 h-4 w-4" /> O'chirish</>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={pushBusy || pushState?.permission === "denied"}
+                  onClick={onEnablePush}
+                >
+                  {pushBusy ? (
+                    <span className="inline-flex items-center gap-2"><InlineSpinner /> Bajarilmoqda…</span>
+                  ) : (
+                    <><Bell className="mr-1.5 h-4 w-4" /> Yoqish</>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

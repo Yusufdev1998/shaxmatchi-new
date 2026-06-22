@@ -13,7 +13,6 @@ import {
   ChevronRight,
   CheckCircle,
   RotateCcw,
-  XCircle,
 } from "lucide-react";
 import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
 import { studentSettingsApi } from "../api/studentSettingsApi";
@@ -113,6 +112,7 @@ export function PuzzlePage() {
   const [game, setGame] = React.useState(() => new Chess());
   const [mode, setMode] = React.useState<"study" | "repeat" | "practice" | null>(null);
   const autoplayRef = React.useRef<number | null>(null);
+  const wrongMoveTimerRef = React.useRef<number | null>(null);
   const limitRedirectTimerRef = React.useRef<number | null>(null);
   const skipNextModeSelectionRef = React.useRef(false);
   /** Avoid resetting board/mode when the same variant refetches (e.g. after consume-attempt). */
@@ -122,7 +122,7 @@ export function PuzzlePage() {
   const [isStudyAudioPlaying, setIsStudyAudioPlaying] = React.useState(false);
   const [isWaitingForAudioDelay, setIsWaitingForAudioDelay] = React.useState(false);
   const [moveIdx, setMoveIdx] = React.useState(0);
-  const [isPracticeResetting, setIsPracticeResetting] = React.useState(false);
+  const [isShowingWrongMove, setIsShowingWrongMove] = React.useState(false);
   const [isLimitRedirecting, setIsLimitRedirecting] = React.useState(false);
 
   const fen = game.fen();
@@ -241,29 +241,30 @@ export function PuzzlePage() {
     navigate(returnTo, { replace: true });
   }, [location.state, navigate]);
 
-  const handlePracticeFailure = React.useCallback((failureMoveIndex: number) => {
-    triggerWrongPracticeFeedback();
-    stopAutoplay();
-    setGame(new Chess());
-    setMoveIdx(0);
-    // In mashq mode, each failed attempt consumes one try.
-    setIsPracticeResetting(true);
-    skipNextModeSelectionRef.current = true;
-    if (!id) {
-      setIsPracticeResetting(false);
-      return;
-    }
-    void studentDebutsApi
-      .consumePracticeAttempt(id, { outcome: "failure", failureMoveIndex })
-      .catch(() => undefined)
-      .then(async () => {
-        await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
-        return puzzleQuery.refetch();
-      })
-      .finally(() => {
-        setIsPracticeResetting(false);
-      });
-  }, [id, puzzleQuery, queryClient, stopAutoplay, triggerWrongPracticeFeedback]);
+  /**
+   * Wrong move in mashq: briefly flash the attempted move (when legal) then revert so the
+   * student can keep practising from the same position. No attempt is consumed.
+   * @param wrongFen FEN to display the wrong move, or null for an illegal move (nothing to show).
+   * @param revertFen position to restore once the flash window ends.
+   */
+  const handlePracticeWrongMove = React.useCallback(
+    (wrongFen: string | null, revertFen: string) => {
+      triggerWrongPracticeFeedback();
+      if (wrongMoveTimerRef.current !== null) {
+        window.clearTimeout(wrongMoveTimerRef.current);
+        wrongMoveTimerRef.current = null;
+      }
+      if (!wrongFen) return;
+      setGame(new Chess(wrongFen));
+      setIsShowingWrongMove(true);
+      wrongMoveTimerRef.current = window.setTimeout(() => {
+        setGame(new Chess(revertFen));
+        setIsShowingWrongMove(false);
+        wrongMoveTimerRef.current = null;
+      }, 700);
+    },
+    [triggerWrongPracticeFeedback],
+  );
 
   /** Each full mashq (success or failure) consumes one urinish; refetch so UI shows updated count. */
   const handlePracticeLineCompleted = React.useCallback(() => {
@@ -283,7 +284,7 @@ export function PuzzlePage() {
   const onPracticePieceDrop = React.useCallback(
     ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
       if (!targetSquare) return false;
-      if (isPracticeResetting) return false;
+      if (isShowingWrongMove) return false;
       if (
         puzzle?.mode === "test" &&
         typeof puzzle.practiceLimit === "number" &&
@@ -301,14 +302,18 @@ export function PuzzlePage() {
       const next = new Chess(fen);
       const move = next.move({ from, to, promotion: "q" });
       if (!move) {
-        handlePracticeFailure(moveIdx);
+        // Illegal move: nothing to flash, just give feedback and let the student retry.
+        handlePracticeWrongMove(null, fen);
         return false;
       }
 
       const expectedSan = puzzleMoves[moveIdx]?.san;
       if (!expectedSan || move.san !== expectedSan) {
-        handlePracticeFailure(moveIdx);
-        return false;
+        // Legal but wrong: flash the attempted move, then revert so practice continues.
+        // Return true so the board keeps the piece on the target during the flash window
+        // (the controlled position is restored when the timer reverts it).
+        handlePracticeWrongMove(next.fen(), fen);
+        return true;
       }
 
       const completesLine = moveIdx + 1 >= puzzleMoves.length;
@@ -322,7 +327,7 @@ export function PuzzlePage() {
       setMoveIdx((i) => i + 1);
       return true;
     },
-    [fen, handlePracticeFailure, handlePracticeLineCompleted, isPracticeResetting, moveIdx, puzzle, puzzleMoves],
+    [fen, handlePracticeWrongMove, handlePracticeLineCompleted, isShowingWrongMove, moveIdx, puzzle, puzzleMoves],
   );
 
   const onRepeatPieceDrop = React.useCallback(
@@ -389,6 +394,15 @@ export function PuzzlePage() {
   }, [handlePracticeLineCompleted, mode, puzzle, fen, moveIdx, puzzleMoves, stopAutoplay]);
 
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
+
+  React.useEffect(
+    () => () => {
+      if (wrongMoveTimerRef.current !== null) {
+        window.clearTimeout(wrongMoveTimerRef.current);
+      }
+    },
+    [],
+  );
 
   React.useEffect(() => {
     setIsStudyAudioPlaying(false);
@@ -548,7 +562,7 @@ export function PuzzlePage() {
     mode === "repeat" && moveIdx < puzzleMoves.length && isStudentMoveAtIndex(studentSide, moveIdx);
   const isPracticeStudentTurn =
     mode === "practice" && moveIdx < puzzleMoves.length && isStudentMoveAtIndex(studentSide, moveIdx);
-  const isPracticeBoardLocked = isLocked || isPracticeResetting;
+  const isPracticeBoardLocked = isLocked || isShowingWrongMove;
 
   const studyBoardShapes =
     mode === "study" && moveIdx > 0 ? puzzleMoves[moveIdx - 1] : null;
@@ -564,23 +578,8 @@ export function PuzzlePage() {
         </div>
       ) : null}
 
-      {mode === "practice" && isPracticeResetting ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4">
-          <div
-            role="alert"
-            className="w-full max-w-sm rounded-2xl border border-rose-200/90 bg-gradient-to-b from-white to-rose-50/90 p-6 text-center shadow-2xl ring-1 ring-rose-500/10"
-          >
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 shadow-inner">
-              <XCircle className="h-8 w-8" strokeWidth={2} aria-hidden />
-            </div>
-            <div className="text-base font-semibold text-slate-900">Xato urinish</div>
-            <div className="mt-1.5 text-sm text-slate-600">Mashq boshidan boshlanadi.</div>
-            <div className="mt-4 text-xs text-slate-500">Yangilanmoqda...</div>
-          </div>
-        </div>
-      ) : null}
 
-      {mode === "practice" && isPracticeComplete && !isPracticeResetting ? (
+      {mode === "practice" && isPracticeComplete && !isShowingWrongMove ? (
         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/50 p-4">
           <div
             role="dialog"

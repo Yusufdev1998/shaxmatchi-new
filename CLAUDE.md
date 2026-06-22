@@ -69,4 +69,9 @@ Source-exported (no build step) — dependents compile it directly. Provides But
 
 Backend `.env` (in `apps/backend/`): `DATABASE_URL`, `JWT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `AUDIO_DIR`
 
+Web Push (admin "new version" notifications, in `apps/backend/.env`):
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` — generate with `npx web-push generate-vapid-keys` (treat the private key as a secret).
+- `VAPID_SUBJECT` — contact URI, e.g. `mailto:admin@shaxmatchi.uz`.
+- `APP_VERSION` — optional version-marker override; **normally unset**. The deployed version comes from the backend `package.json` `version` (single source of truth). On boot the backend compares it to the last value in the `app_meta` table and, if it changed, pushes a "Yangi versiya" notification to all subscribed teachers. **Bump `apps/backend/package.json` `version` and restart the backend on each release to trigger the alert.** If VAPID keys are unset, Web Push is disabled (logged as a warning) and the rest of the app runs normally.
+
 Frontend: `VITE_API_URL` (defaults to `http://localhost:3000`)

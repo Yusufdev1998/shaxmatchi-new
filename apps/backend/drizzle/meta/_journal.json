@@ -113,6 +113,13 @@
       "when": 1781675564112,
       "tag": "0015_past_silvermane",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1782140073366,
+      "tag": "0016_chubby_madame_hydra",
+      "breakpoints": true
     }
   ]
 }

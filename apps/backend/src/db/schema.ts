@@ -273,3 +273,32 @@ export const examAttempts = pgTable("exam_attempts", {
 
 export type ExamAttempt = typeof examAttempts.$inferSelect;
 export type NewExamAttempt = typeof examAttempts.$inferInsert;
+
+/** Web Push subscriptions (admin/teacher browsers). One row per browser endpoint. */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+/** Generic key/value app metadata (e.g. the last app version we broadcast a push for). */
+export const appMeta = pgTable("app_meta", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type AppMeta = typeof appMeta.$inferSelect;

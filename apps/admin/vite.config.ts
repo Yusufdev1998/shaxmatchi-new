@@ -65,6 +65,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,webp,ico}"],
+        // Pull Web Push (push / notificationclick) handlers into the generated SW.
+        importScripts: ["push-sw.js"],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/localhost:3000\/.*/i,
