@@ -174,19 +174,26 @@ export function AppLayout() {
       </header>
 
       {pwaUpdateReady ? (
-        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center">
-          <span className="text-xs text-emerald-800">Yangi versiya mavjud!</span>
-          <Button
-            variant="default"
-            className="ml-2 h-6 px-2 text-xs"
-            onClick={() => {
-              const fn = getPwaUpdateFn();
-              if (fn) fn();
-            }}
-          >
-            <RefreshCw className="mr-1 h-3 w-3" />
-            Yangilash
-          </Button>
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="animate-update-banner pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl border border-emerald-300/50 bg-gradient-to-r from-emerald-600 to-emerald-500 px-4 py-3 text-white ring-1 ring-black/5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+              <RefreshCw className="animate-update-spin h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold leading-tight">Yangi versiya mavjud!</div>
+              <div className="text-xs text-emerald-50/90">Eng so'nggi versiyaga yangilang.</div>
+            </div>
+            <Button
+              variant="secondary"
+              className="h-9 shrink-0 bg-white px-3.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+              onClick={() => {
+                const fn = getPwaUpdateFn();
+                if (fn) fn();
+              }}
+            >
+              Yangilash
+            </Button>
+          </div>
         </div>
       ) : null}
 

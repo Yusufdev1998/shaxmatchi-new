@@ -40,3 +40,47 @@ body {
   animation: board-shake 0.45s ease-in-out;
 }
 
+@keyframes update-banner-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes update-banner-glow {
+  0%,
+  100% {
+    box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.35), 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+  50% {
+    box-shadow: 0 16px 34px -6px rgba(0, 0, 0, 0.4), 0 0 0 5px rgba(255, 255, 255, 0.18);
+  }
+}
+
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-update-banner {
+  animation:
+    update-banner-in 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    update-banner-glow 2.4s ease-in-out 0.5s infinite;
+}
+
+.animate-update-spin {
+  animation: update-spin 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-update-banner,
+  .animate-update-spin {
+    animation: none;
+  }
+}
+
