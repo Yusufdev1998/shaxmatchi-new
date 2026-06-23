@@ -44,6 +44,8 @@ export function AppLayout() {
   const [isStandalone, setIsStandalone] = React.useState(false);
   const inTelegram = isTelegramMiniApp();
   const [pwaUpdateReady, setPwaUpdateReady] = React.useState(() => !!getPwaUpdateFn());
+  // Hide the update banner during an in-progress exam so students don't reload mid-attempt.
+  const onExamTake = /^\/exams\/[^/]+\/take\//.test(location.pathname);
   const [headerOverride, setHeaderOverride] = React.useState<StudentHeaderOverride>(null);
   const headerCtxValue = React.useMemo(
     () => ({ setOverride: setHeaderOverride }),
@@ -173,7 +175,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      {pwaUpdateReady ? (
+      {pwaUpdateReady && !onExamTake ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="animate-update-banner pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl border border-emerald-300/50 bg-gradient-to-r from-emerald-600 to-emerald-500 px-4 py-3 text-white ring-1 ring-black/5">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
