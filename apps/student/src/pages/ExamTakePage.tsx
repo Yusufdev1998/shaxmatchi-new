@@ -390,7 +390,15 @@ export function ExamTakePage() {
   const boardOrientation: "white" | "black" = puzzle.studentSide;
   const studentsTurn =
     status === "in_progress" && moveIdx < puzzle.moves.length && isStudentMoveAtIndex(puzzle, moveIdx);
-  const timerTone = secondsLeft <= 3 ? "text-red-600" : secondsLeft <= 10 ? "text-amber-600" : "text-slate-700";
+  // While reviewing a mistake the per-move timer is paused; show the review countdown instead.
+  const timerSeconds = reviewActive ? reviewSecondsLeft : secondsLeft;
+  const timerTone = reviewActive
+    ? "text-rose-600"
+    : secondsLeft <= 3
+      ? "text-red-600"
+      : secondsLeft <= 10
+        ? "text-amber-600"
+        : "text-slate-700";
   const studentName = getAuthUser()?.login?.trim() || "";
   const isLastPuzzle = puzzleIdx + 1 >= totalPuzzles;
 
@@ -403,9 +411,16 @@ export function ExamTakePage() {
           </div>
           <div className="truncate text-sm font-semibold text-slate-900">{puzzle.name}</div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Timer className={`h-4 w-4 ${timerTone}`} />
-          <span className={`font-mono text-sm font-semibold ${timerTone}`}>{secondsLeft}s</span>
+        <div className="flex shrink-0 flex-col items-end leading-tight">
+          {reviewActive ? (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-rose-500">
+              Ko'rib chiqish
+            </span>
+          ) : null}
+          <div className="flex items-center gap-1.5">
+            <Timer className={`h-4 w-4 ${timerTone} ${reviewActive ? "animate-pulse" : ""}`} />
+            <span className={`font-mono text-sm font-semibold ${timerTone}`}>{timerSeconds}s</span>
+          </div>
         </div>
       </div>
 
