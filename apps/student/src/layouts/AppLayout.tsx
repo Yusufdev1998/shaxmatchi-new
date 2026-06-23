@@ -4,7 +4,7 @@ import { Button } from "@shaxmatchi/ui";
 import { BookOpen, ChevronLeft, Download, Dumbbell, GraduationCap, LogOut, Home, Swords, RefreshCw } from "lucide-react";
 import { clearAuthSession, getAuthToken, getAuthUser } from "../auth/auth";
 import { isTelegramMiniApp } from "../auth/telegram";
-import { getPwaUpdateFn, subscribePwaUpdate } from "../pwaUpdate";
+import { getPwaUpdateFn, subscribePwaUpdate, triggerPwaUpdate } from "../pwaUpdate";
 
 export type StudentHeaderOverride = {
   title: string;
@@ -186,10 +186,7 @@ export function AppLayout() {
             <Button
               variant="secondary"
               className="h-9 shrink-0 bg-white px-3.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-              onClick={() => {
-                const fn = getPwaUpdateFn();
-                if (fn) fn();
-              }}
+              onClick={() => triggerPwaUpdate()}
             >
               Yangilash
             </Button>

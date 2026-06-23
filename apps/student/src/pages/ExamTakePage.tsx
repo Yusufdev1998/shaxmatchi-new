@@ -13,6 +13,7 @@ import {
   type StudentExamAttemptStart,
 } from "../api/studentExamsApi";
 import { getAuthUser } from "../auth/auth";
+import { isPwaUpdating } from "../pwaUpdate";
 import {
   playAchievementSound,
   playCountdownBeep,
@@ -278,10 +279,12 @@ export function ExamTakePage() {
     return () => window.clearInterval(tick);
   }, [attempt, puzzle, moveIdx, status, isTransitioning]);
 
-  // Warn on navigation while in progress.
+  // Warn on navigation while in progress — except when the user opted into a PWA update,
+  // whose reload would otherwise be cancelled by this guard.
   React.useEffect(() => {
     if (status !== "in_progress") return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isPwaUpdating()) return;
       e.preventDefault();
       e.returnValue = "";
     };
