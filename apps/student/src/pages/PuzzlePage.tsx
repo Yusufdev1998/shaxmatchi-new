@@ -241,45 +241,64 @@ export function PuzzlePage() {
     navigate(returnTo, { replace: true });
   }, [location.state, navigate]);
 
+  /** Each full mashq (success or failure) consumes one urinish; refetch so UI shows updated count. */
+  const consumePracticeOutcome = React.useCallback(
+    (outcome: "success" | "failure", failureMoveIndex?: number) => {
+      if (!id) return;
+      if (puzzle?.mode !== "test") return;
+      // Refetch updates `puzzle` and retriggers the effect below; keep mashq open like after a wrong move.
+      skipNextModeSelectionRef.current = true;
+      void studentDebutsApi
+        .consumePracticeAttempt(
+          id,
+          outcome === "failure"
+            ? { outcome, failureMoveIndex: failureMoveIndex ?? 0 }
+            : { outcome },
+        )
+        .catch(() => undefined)
+        .then(async () => {
+          await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
+          return puzzleQuery.refetch();
+        });
+    },
+    [id, puzzle?.mode, puzzleQuery, queryClient],
+  );
+
+  /** Illegal drag in mashq: just give feedback and snap the piece back — no urinish is consumed. */
+  const handlePracticeIllegalMove = React.useCallback(() => {
+    triggerWrongPracticeFeedback();
+  }, [triggerWrongPracticeFeedback]);
+
   /**
-   * Wrong move in mashq: briefly flash the attempted move (when legal) then revert so the
-   * student can keep practising from the same position. No attempt is consumed.
-   * @param wrongFen FEN to display the wrong move, or null for an illegal move (nothing to show).
-   * @param revertFen position to restore once the flash window ends.
+   * Legal but incorrect move in mashq: flash the attempted move, count it as a failed urinish,
+   * then restart the line from the beginning so the student replays it from the first move.
+   * @param wrongFen FEN to display the wrong move during the flash window.
+   * @param failureMoveIndex 0-based index of the move the student got wrong.
    */
   const handlePracticeWrongMove = React.useCallback(
-    (wrongFen: string | null, revertFen: string) => {
+    (wrongFen: string, failureMoveIndex: number) => {
       triggerWrongPracticeFeedback();
+      consumePracticeOutcome("failure", failureMoveIndex);
       if (wrongMoveTimerRef.current !== null) {
         window.clearTimeout(wrongMoveTimerRef.current);
         wrongMoveTimerRef.current = null;
       }
-      if (!wrongFen) return;
       setGame(new Chess(wrongFen));
       setIsShowingWrongMove(true);
       wrongMoveTimerRef.current = window.setTimeout(() => {
-        setGame(new Chess(revertFen));
+        // Start over from the initial position.
+        setGame(new Chess());
+        setMoveIdx(0);
         setIsShowingWrongMove(false);
         wrongMoveTimerRef.current = null;
       }, 700);
     },
-    [triggerWrongPracticeFeedback],
+    [consumePracticeOutcome, triggerWrongPracticeFeedback],
   );
 
-  /** Each full mashq (success or failure) consumes one urinish; refetch so UI shows updated count. */
   const handlePracticeLineCompleted = React.useCallback(() => {
-    if (!id) return;
-    if (puzzle?.mode !== "test") return;
-    // Refetch updates `puzzle` and retriggers the effect below; keep mashq open like after a wrong move.
-    skipNextModeSelectionRef.current = true;
-    void studentDebutsApi
-      .consumePracticeAttempt(id, { outcome: "success" })
-      .catch(() => undefined)
-      .then(async () => {
-        await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
-        return puzzleQuery.refetch();
-      });
-  }, [id, puzzle?.mode, puzzleQuery, queryClient]);
+    consumePracticeOutcome("success");
+  }, [consumePracticeOutcome]);
 
   const onPracticePieceDrop = React.useCallback(
     ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
@@ -303,16 +322,16 @@ export function PuzzlePage() {
       const move = next.move({ from, to, promotion: "q" });
       if (!move) {
         // Illegal move: nothing to flash, just give feedback and let the student retry.
-        handlePracticeWrongMove(null, fen);
+        handlePracticeIllegalMove();
         return false;
       }
 
       const expectedSan = puzzleMoves[moveIdx]?.san;
       if (!expectedSan || move.san !== expectedSan) {
-        // Legal but wrong: flash the attempted move, then revert so practice continues.
+        // Legal but wrong: flash the attempted move, count a failed attempt, then restart from move 1.
         // Return true so the board keeps the piece on the target during the flash window
-        // (the controlled position is restored when the timer reverts it).
-        handlePracticeWrongMove(next.fen(), fen);
+        // (the controlled position is restored when the timer resets it).
+        handlePracticeWrongMove(next.fen(), moveIdx);
         return true;
       }
 
@@ -327,7 +346,16 @@ export function PuzzlePage() {
       setMoveIdx((i) => i + 1);
       return true;
     },
-    [fen, handlePracticeWrongMove, handlePracticeLineCompleted, isShowingWrongMove, moveIdx, puzzle, puzzleMoves],
+    [
+      fen,
+      handlePracticeIllegalMove,
+      handlePracticeWrongMove,
+      handlePracticeLineCompleted,
+      isShowingWrongMove,
+      moveIdx,
+      puzzle,
+      puzzleMoves,
+    ],
   );
 
   const onRepeatPieceDrop = React.useCallback(
