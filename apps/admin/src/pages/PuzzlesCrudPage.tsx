@@ -28,6 +28,8 @@ import {
   ChevronUp,
   ChevronDown,
   MoreVertical,
+  AlertCircle,
+  RotateCcw,
 } from "lucide-react";
 import { API_URL } from "../auth/auth";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
@@ -241,6 +243,8 @@ export function PuzzlesCrudPage() {
   }>({ circles: [], arrows: [] });
   const [newMoveDialogAudio, setNewMoveDialogAudio] = React.useState<string | undefined>(undefined);
   const [audioUploading, setAudioUploading] = React.useState(false);
+  const [audioError, setAudioError] = React.useState<string | null>(null);
+  const [pendingAudioFile, setPendingAudioFile] = React.useState<File | null>(null);
   const [copyExplTargetIdx, setCopyExplTargetIdx] = React.useState<number | null>(null);
   const [copyExplVariantId, setCopyExplVariantId] = React.useState<string>("");
   const [copyExplMoveIdx, setCopyExplMoveIdx] = React.useState<string>("");
@@ -633,6 +637,35 @@ export function PuzzlesCrudPage() {
       });
     },
   });
+  const uploadAudioFile = async (file: File) => {
+    setPendingAudioFile(file);
+    setAudioError(null);
+    try {
+      setAudioUploading(true);
+      const res = await adminDebutsApi.uploadAudio(file);
+      setNewMoveDialogAudio(res.filename);
+      if (newMoveDialogIdx !== null) {
+        const updated = newMoves.map((x, i) =>
+          i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x,
+        );
+        setNewMoves(updated);
+        if (editingPuzzleId) {
+          void updatePuzzleMutation
+            .mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide })
+            .catch(() => {});
+        }
+      }
+      setPendingAudioFile(null);
+    } catch (err) {
+      setAudioError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Audio yuklashda xatolik yuz berdi. Qaytadan urinib ko'ring.",
+      );
+    } finally {
+      setAudioUploading(false);
+    }
+  };
   const deletePuzzleMutation = useMutation({
     mutationFn: (puzzleId: string) =>
       adminDebutsApi.deletePuzzle(
@@ -1082,6 +1115,8 @@ export function PuzzlesCrudPage() {
                             arrows: m.arrows ?? [],
                           });
                           setNewMoveDialogAudio(m.audioUrl);
+                          setAudioError(null);
+                          setPendingAudioFile(null);
                         }}
                       >
                         {moveHasExplanationContent(m) ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -1181,23 +1216,8 @@ export function PuzzlesCrudPage() {
                 <div className="space-y-3">
                   <AudioRecorder
                     disabled={busy || audioUploading}
-                    onRecorded={async (file) => {
-                      try {
-                        setAudioUploading(true);
-                        const res = await adminDebutsApi.uploadAudio(file);
-                        setNewMoveDialogAudio(res.filename);
-                        if (newMoveDialogIdx !== null) {
-                          const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
-                          setNewMoves(updated);
-                          if (editingPuzzleId) {
-                            void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
-                          }
-                        }
-                      } catch (err) {
-                        alert(err instanceof Error ? err.message : "Audio yuklab bo'lmadi");
-                      } finally {
-                        setAudioUploading(false);
-                      }
+                    onRecorded={(file) => {
+                      void uploadAudioFile(file);
                     }}
                   />
                   <div className="flex items-center gap-2">
@@ -1222,29 +1242,40 @@ export function PuzzlesCrudPage() {
                       accept="audio/*"
                       className="hidden"
                       disabled={audioUploading || busy}
-                      onChange={async (e) => {
+                      onChange={(e) => {
                         const file = e.target.files?.[0];
                         e.target.value = "";
                         if (!file) return;
-                        try {
-                          setAudioUploading(true);
-                          const res = await adminDebutsApi.uploadAudio(file);
-                          setNewMoveDialogAudio(res.filename);
-                          if (newMoveDialogIdx !== null) {
-                            const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x);
-                            setNewMoves(updated);
-                            if (editingPuzzleId) {
-                              void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
-                            }
-                          }
-                        } catch (err) {
-                          alert(err instanceof Error ? err.message : "Audio yuklab bo'lmadi");
-                        } finally {
-                          setAudioUploading(false);
-                        }
+                        void uploadAudioFile(file);
                       }}
                     />
                   </label>
+                  {audioError && (
+                    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div>{audioError}</div>
+                        {pendingAudioFile && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={audioUploading}
+                            onClick={() => {
+                              if (pendingAudioFile) void uploadAudioFile(pendingAudioFile);
+                            }}
+                          >
+                            {audioUploading ? (
+                              <InlineSpinner />
+                            ) : (
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            )}
+                            Qayta urinish
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
