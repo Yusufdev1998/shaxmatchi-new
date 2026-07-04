@@ -21,6 +21,7 @@ const DEFAULT_FORM: ExamInput = {
   secondsPerMove: 15,
   attemptsAllowed: 3,
   puzzleCount: 5,
+  cooldownSeconds: 60,
   taskIds: [],
 };
 
@@ -36,6 +37,7 @@ export function ExamEditPage() {
     secondsPerMove: String(DEFAULT_FORM.secondsPerMove),
     attemptsAllowed: String(DEFAULT_FORM.attemptsAllowed),
     puzzleCount: String(DEFAULT_FORM.puzzleCount),
+    cooldownSeconds: String(DEFAULT_FORM.cooldownSeconds),
   });
   const [taskSearch, setTaskSearch] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -76,6 +78,7 @@ export function ExamEditPage() {
         secondsPerMove: String(DEFAULT_FORM.secondsPerMove),
         attemptsAllowed: String(DEFAULT_FORM.attemptsAllowed),
         puzzleCount: String(DEFAULT_FORM.puzzleCount),
+        cooldownSeconds: String(DEFAULT_FORM.cooldownSeconds),
       });
       return;
     }
@@ -85,12 +88,14 @@ export function ExamEditPage() {
         secondsPerMove: examQuery.data.secondsPerMove,
         attemptsAllowed: examQuery.data.attemptsAllowed,
         puzzleCount: examQuery.data.puzzleCount,
+        cooldownSeconds: examQuery.data.cooldownSeconds,
         taskIds: examQuery.data.taskIds ?? [],
       });
       setNums({
         secondsPerMove: String(examQuery.data.secondsPerMove),
         attemptsAllowed: String(examQuery.data.attemptsAllowed),
         puzzleCount: String(examQuery.data.puzzleCount),
+        cooldownSeconds: String(examQuery.data.cooldownSeconds),
       });
     }
   }, [isNew, examQuery.data]);
@@ -170,12 +175,17 @@ export function ExamEditPage() {
     const secondsPerMove = Math.round(Number(nums.secondsPerMove));
     const attemptsAllowed = Math.round(Number(nums.attemptsAllowed));
     const puzzleCount = Math.round(Number(nums.puzzleCount));
+    const cooldownSeconds = Math.round(Number(nums.cooldownSeconds));
     if (![secondsPerMove, attemptsAllowed, puzzleCount].every((n) => Number.isFinite(n) && n >= 1)) {
       setError("Barcha raqamlar 1 yoki undan katta bo'lishi kerak.");
       return;
     }
+    if (!Number.isFinite(cooldownSeconds) || cooldownSeconds < 0) {
+      setError("Kutish vaqti 0 yoki undan katta bo'lishi kerak.");
+      return;
+    }
     try {
-      const payload = { ...form, name, secondsPerMove, attemptsAllowed, puzzleCount };
+      const payload = { ...form, name, secondsPerMove, attemptsAllowed, puzzleCount, cooldownSeconds };
       if (isNew) await createMutation.mutateAsync(payload);
       else {
         await updateMutation.mutateAsync(payload);
@@ -275,7 +285,7 @@ export function ExamEditPage() {
             />
           </label>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="grid gap-1">
               <span className="text-xs font-medium text-slate-700">Har yurishga (sekund)</span>
               <input
@@ -314,6 +324,22 @@ export function ExamEditPage() {
                 onChange={(e) => setNums((n) => ({ ...n, puzzleCount: e.target.value }))}
                 disabled={busy}
               />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs font-medium text-slate-700">Urinishlar orasidagi kutish (sekund)</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={3600}
+                className={debutsUi.input}
+                value={nums.cooldownSeconds}
+                onChange={(e) => setNums((n) => ({ ...n, cooldownSeconds: e.target.value }))}
+                disabled={busy}
+              />
+              <span className="text-[11px] text-slate-500">
+                Urinish tugagach, keyingisidan oldin kutiladigan vaqt (0 — kutishsiz).
+              </span>
             </label>
           </div>
 
@@ -640,31 +666,42 @@ function AssignmentAttempts({ examId, assignmentId }: { examId: string; assignme
               <span className="text-slate-400">{formatDateTime(at.startedAt)}</span>
             </div>
             {at.status === "failed" ? (
-              at.failDetail ? (
-                <div className="mt-1 text-slate-600">
-                  <span className="font-medium text-slate-800">
-                    Pazl {at.failDetail.puzzleIndex + 1}: {at.failDetail.puzzleName}
-                  </span>
-                  <span className="text-slate-400"> — {at.failDetail.moveNumber}-yurish</span>
-                  <div className="mt-0.5">
-                    {at.failDetail.reason === "timeout" ? (
-                      <span className="text-red-700">Vaqt tugadi</span>
-                    ) : (
-                      <span className="text-red-700">
-                        Xato yurish: <span className="font-mono">{at.failDetail.playedSan ?? "—"}</span>
-                      </span>
-                    )}
-                    {at.failDetail.expectedSan ? (
-                      <span className="text-slate-500">
-                        {" "}
-                        · To'g'risi: <span className="font-mono text-emerald-700">{at.failDetail.expectedSan}</span>
-                      </span>
-                    ) : null}
+              (() => {
+                const fails = at.failDetails ?? (at.failDetail ? [at.failDetail] : []);
+                if (fails.length === 0) {
+                  return <div className="mt-1 text-slate-400">Tafsilot yo'q (tashlab ketilgan).</div>;
+                }
+                return (
+                  <div className="mt-1 space-y-1">
+                    <div className="text-[11px] font-medium text-red-700">
+                      Xatolar: {fails.length}
+                    </div>
+                    {fails.map((f, fi) => (
+                      <div key={fi} className="text-slate-600">
+                        <span className="font-medium text-slate-800">
+                          Pazl {f.puzzleIndex + 1}: {f.puzzleName}
+                        </span>
+                        <span className="text-slate-400"> — {f.moveNumber}-yurish</span>
+                        <div className="mt-0.5">
+                          {f.reason === "timeout" ? (
+                            <span className="text-red-700">Vaqt tugadi</span>
+                          ) : (
+                            <span className="text-red-700">
+                              Xato yurish: <span className="font-mono">{f.playedSan ?? "—"}</span>
+                            </span>
+                          )}
+                          {f.expectedSan ? (
+                            <span className="text-slate-500">
+                              {" "}
+                              · To'g'risi: <span className="font-mono text-emerald-700">{f.expectedSan}</span>
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ) : (
-                <div className="mt-1 text-slate-400">Tafsilot yo'q (tashlab ketilgan).</div>
-              )
+                );
+              })()
             ) : null}
           </div>
         );

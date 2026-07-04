@@ -24,6 +24,9 @@ import {
 /** Optional review window (seconds) after a wrong move; the student can skip with "Keyingi". */
 const REVIEW_SECONDS = 60;
 
+/** Celebration window (seconds) after solving a puzzle, before moving to the next one. */
+const SUCCESS_SECONDS = 3;
+
 /** Ms delay before auto-playing an opponent move — matches the practice-mode feel. */
 const OPPONENT_MOVE_DELAY_MS = 450;
 
@@ -57,8 +60,8 @@ export function ExamTakePage() {
   ]);
 
   const finalizeMutation = useMutation({
-    mutationFn: (args: { result: "passed" | "failed"; failDetail?: ExamAttemptFailDetail }) =>
-      studentExamsApi.finalizeAttempt(attemptId!, args.result, args.failDetail),
+    mutationFn: (args: { result: "passed" | "failed"; failDetails?: ExamAttemptFailDetail[] }) =>
+      studentExamsApi.finalizeAttempt(attemptId!, args.result, args.failDetails),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["studentExam", examId] });
       await queryClient.invalidateQueries({ queryKey: ["studentExams"] });
@@ -79,6 +82,9 @@ export function ExamTakePage() {
     playedSan: string | null;
     expectedSan: string | null;
   } | null>(null);
+  // Short celebration shown after a puzzle is solved cleanly, before advancing to the next one.
+  const [successActive, setSuccessActive] = React.useState(false);
+  const [successSecondsLeft, setSuccessSecondsLeft] = React.useState(0);
   const opponentTimerRef = React.useRef<number | null>(null);
   const boardWrapRef = React.useRef<HTMLDivElement | null>(null);
   const statusRef = React.useRef<Status>("in_progress");
@@ -86,9 +92,10 @@ export function ExamTakePage() {
   // True while flashing a wrong move before advancing — blocks input/timer/opponent.
   const transitioningRef = React.useRef(false);
   // A single wrong move no longer ends the exam; we remember whether any puzzle was
-  // missed and only fail the attempt at the end. `firstFailRef` keeps the first slip.
+  // missed and only fail the attempt at the end. `failsRef` collects every mistake so the
+  // teacher can review all of them (not just the first).
   const hadMistakeRef = React.useRef(false);
-  const firstFailRef = React.useRef<ExamAttemptFailDetail | null>(null);
+  const failsRef = React.useRef<ExamAttemptFailDetail[]>([]);
 
   const puzzle = attempt?.puzzles[puzzleIdx];
   const totalPuzzles = attempt?.puzzles.length ?? 0;
@@ -116,6 +123,7 @@ export function ExamTakePage() {
 
   const finishRef = React.useRef<() => void>(() => {});
   const advanceRef = React.useRef<() => void>(() => {});
+  const enterSuccessRef = React.useRef<() => void>(() => {});
   const failPuzzleRef = React.useRef<
     (reason: "wrong" | "timeout", playedSan?: string, trialFen?: string) => void
   >(() => {});
@@ -133,17 +141,41 @@ export function ExamTakePage() {
     if (passed) playAchievementSound();
     finalizeRef.current.mutate({
       result: nextStatus,
-      failDetail: passed ? undefined : firstFailRef.current ?? undefined,
+      failDetails: passed ? undefined : failsRef.current,
     });
   };
 
   advanceRef.current = () => {
     if (statusRef.current !== "in_progress") return;
     if (puzzleIdx + 1 < totalPuzzles) {
+      // Reset the board together with the puzzle index so the completion check never sees a
+      // move index left over from the puzzle we're leaving.
+      setGame(new Chess());
+      setMoveIdx(0);
       setPuzzleIdx((i) => i + 1);
     } else {
       finishRef.current();
     }
+  };
+
+  // A puzzle was solved cleanly. On the last puzzle, go straight to the final result (which
+  // carries its own, bigger celebration). Otherwise play a short congrats, hold for a few
+  // seconds so the student can enjoy it, then advance to the next puzzle.
+  enterSuccessRef.current = () => {
+    if (statusRef.current !== "in_progress") return;
+    if (transitioningRef.current) return;
+    if (puzzleIdx + 1 >= totalPuzzles) {
+      finishRef.current();
+      return;
+    }
+    transitioningRef.current = true;
+    setIsTransitioning(true);
+    if (opponentTimerRef.current) {
+      window.clearTimeout(opponentTimerRef.current);
+      opponentTimerRef.current = null;
+    }
+    playAchievementSound();
+    setSuccessActive(true);
   };
 
   // Wrong move / timeout on a puzzle: flash feedback (same feel as practice), record the
@@ -154,8 +186,8 @@ export function ExamTakePage() {
     transitioningRef.current = true;
     setIsTransitioning(true);
     hadMistakeRef.current = true;
-    if (!firstFailRef.current && puzzle) {
-      firstFailRef.current = {
+    if (puzzle) {
+      failsRef.current.push({
         puzzleId: puzzle.id,
         puzzleName: puzzle.name,
         puzzleIndex: puzzleIdx,
@@ -164,7 +196,7 @@ export function ExamTakePage() {
         reason,
         playedSan: playedSan ?? null,
         expectedSan: puzzle.moves[moveIdx]?.san ?? null,
-      };
+      });
     }
     if (opponentTimerRef.current) {
       window.clearTimeout(opponentTimerRef.current);
@@ -198,6 +230,15 @@ export function ExamTakePage() {
     advanceRef.current();
   }, []);
 
+  // Leave the success window (auto after SUCCESS_SECONDS or via the "Keyingi pazl" button).
+  const continueAfterSuccess = React.useCallback(() => {
+    if (!transitioningRef.current) return;
+    transitioningRef.current = false;
+    setIsTransitioning(false);
+    setSuccessActive(false);
+    advanceRef.current();
+  }, []);
+
   // Reset board at the start of each puzzle.
   React.useEffect(() => {
     if (!attempt || !puzzle) return;
@@ -212,11 +253,8 @@ export function ExamTakePage() {
     if (status !== "in_progress") return;
     if (isTransitioning) return;
     if (moveIdx >= puzzle.moves.length) {
-      if (puzzleIdx + 1 < totalPuzzles) {
-        setPuzzleIdx((i) => i + 1);
-      } else {
-        finishRef.current();
-      }
+      // Puzzle solved — celebrate, then advance (or finish on the last puzzle).
+      enterSuccessRef.current();
       return;
     }
     if (isStudentMoveAtIndex(puzzle, moveIdx)) return;
@@ -308,6 +346,22 @@ export function ExamTakePage() {
     return () => window.clearInterval(tick);
   }, [reviewActive, continueAfterReview]);
 
+  // Celebration countdown after a solved puzzle; auto-advances when it hits zero.
+  React.useEffect(() => {
+    if (!successActive) return;
+    setSuccessSecondsLeft(SUCCESS_SECONDS);
+    const startedAt = Date.now();
+    const tick = window.setInterval(() => {
+      const left = Math.max(0, SUCCESS_SECONDS - Math.floor((Date.now() - startedAt) / 1000));
+      setSuccessSecondsLeft(left);
+      if (left <= 0) {
+        window.clearInterval(tick);
+        continueAfterSuccess();
+      }
+    }, 250);
+    return () => window.clearInterval(tick);
+  }, [successActive, continueAfterSuccess]);
+
   // After pass/fail, auto-navigate back to the exams list (longer on pass to enjoy the moment).
   React.useEffect(() => {
     if (status === "in_progress") return;
@@ -393,15 +447,22 @@ export function ExamTakePage() {
   const boardOrientation: "white" | "black" = puzzle.studentSide;
   const studentsTurn =
     status === "in_progress" && moveIdx < puzzle.moves.length && isStudentMoveAtIndex(puzzle, moveIdx);
-  // While reviewing a mistake the per-move timer is paused; show the review countdown instead.
-  const timerSeconds = reviewActive ? reviewSecondsLeft : secondsLeft;
+  // While reviewing a mistake or celebrating a solve the per-move timer is paused; show the
+  // relevant countdown instead.
+  const timerSeconds = reviewActive
+    ? reviewSecondsLeft
+    : successActive
+      ? successSecondsLeft
+      : secondsLeft;
   const timerTone = reviewActive
     ? "text-rose-600"
-    : secondsLeft <= 3
-      ? "text-red-600"
-      : secondsLeft <= 10
-        ? "text-amber-600"
-        : "text-slate-700";
+    : successActive
+      ? "text-emerald-600"
+      : secondsLeft <= 3
+        ? "text-red-600"
+        : secondsLeft <= 10
+          ? "text-amber-600"
+          : "text-slate-700";
   const studentName = getAuthUser()?.login?.trim() || "";
   const isLastPuzzle = puzzleIdx + 1 >= totalPuzzles;
 
@@ -419,9 +480,13 @@ export function ExamTakePage() {
             <span className="text-[10px] font-medium uppercase tracking-wide text-rose-500">
               Ko'rib chiqish
             </span>
+          ) : successActive ? (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-500">
+              Ajoyib!
+            </span>
           ) : null}
           <div className="flex items-center gap-1.5">
-            <Timer className={`h-4 w-4 ${timerTone} ${reviewActive ? "animate-pulse" : ""}`} />
+            <Timer className={`h-4 w-4 ${timerTone} ${reviewActive || successActive ? "animate-pulse" : ""}`} />
             <span className={`font-mono text-sm font-semibold ${timerTone}`}>{timerSeconds}s</span>
           </div>
         </div>
@@ -449,13 +514,33 @@ export function ExamTakePage() {
           />
         </div>
         <div className="mt-2 text-center text-xs text-slate-500">
-          {status !== "in_progress" || reviewActive
+          {status !== "in_progress" || reviewActive || successActive
             ? null
             : studentsTurn
               ? "Yurishingizni qiling"
               : "Raqib yurmoqda…"}
         </div>
       </div>
+
+      {status === "in_progress" && successActive ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+          <div className="flex items-start gap-2">
+            <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-emerald-800">To'g'ri yechildi! 🎉</div>
+              <div className="mt-0.5 text-xs text-emerald-700">
+                Keyingi pazlga {successSecondsLeft}s dan so'ng o'tiladi.
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <Button size="sm" onClick={continueAfterSuccess}>
+              Keyingi pazl
+              <ArrowRight className="ml-1.5 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {status === "in_progress" && reviewActive ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 shadow-sm">

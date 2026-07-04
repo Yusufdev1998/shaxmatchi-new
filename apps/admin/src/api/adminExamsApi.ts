@@ -7,6 +7,7 @@ export type Exam = {
   secondsPerMove: number;
   attemptsAllowed: number;
   puzzleCount: number;
+  cooldownSeconds: number;
   createdAt: string;
   taskIds?: string[];
 };
@@ -39,6 +40,7 @@ export type ExamAttemptRecord = {
   id: string;
   status: "in_progress" | "passed" | "failed";
   failDetail: ExamAttemptFailDetail | null;
+  failDetails: ExamAttemptFailDetail[] | null;
   startedAt: string;
   completedAt: string | null;
 };
@@ -48,6 +50,7 @@ export type ExamInput = {
   secondsPerMove: number;
   attemptsAllowed: number;
   puzzleCount: number;
+  cooldownSeconds: number;
   taskIds: string[];
 };
 

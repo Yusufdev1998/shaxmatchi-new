@@ -26,6 +26,12 @@ export function ExamDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = React.useState<string | null>(null);
+  // Ticks once a second so the cooldown countdown updates live.
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
 
   const examQuery = useQuery({
     queryKey: ["studentExam", examId],
@@ -72,6 +78,19 @@ export function ExamDetailPage() {
   const remaining = Math.max(0, exam.attemptsAllowed - exam.attemptsUsed);
   const exhausted = remaining === 0;
 
+  // Cooldown: after the most recent finished attempt (pass or fail), the student must wait
+  // `cooldownSeconds` before starting the next one. Mirrors the server-side gate.
+  const cooldownSeconds = exam.cooldownSeconds ?? 0;
+  const finishedTimes = exam.attempts
+    .filter((a) => a.status !== "in_progress" && a.completedAt)
+    .map((a) => new Date(a.completedAt as string).getTime());
+  const lastCompletedAt = finishedTimes.length ? Math.max(...finishedTimes) : null;
+  const cooldownRemaining =
+    cooldownSeconds > 0 && lastCompletedAt !== null
+      ? Math.max(0, Math.ceil((lastCompletedAt + cooldownSeconds * 1000 - now) / 1000))
+      : 0;
+  const coolingDown = cooldownRemaining > 0;
+
   return (
     <div className="space-y-3">
       <div>
@@ -81,7 +100,10 @@ export function ExamDetailPage() {
         </div>
         <p className="mt-2 text-sm text-slate-600">
           Har imtihonda {exam.puzzleCount} ta tasodifiy pazl, har yurish uchun {exam.secondsPerMove} soniya.
-          Bitta noto'g'ri yurish imtihonni to'xtatadi.
+          Imtihondan o'tish uchun barcha pazllarni xatosiz yeching.
+          {cooldownSeconds > 0
+            ? ` Har urinishdan so'ng keyingisigacha ${cooldownSeconds} soniya kutiladi.`
+            : ""}
         </p>
       </div>
 
@@ -97,10 +119,16 @@ export function ExamDetailPage() {
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</div>
         ) : null}
 
+        {coolingDown && !exhausted ? (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">
+            Keyingi urinishgacha <span className="font-mono font-semibold">{cooldownRemaining}s</span> kuting.
+          </div>
+        ) : null}
+
         <div className="mt-4">
           <Button
             className="w-full sm:w-auto"
-            disabled={exhausted || startMutation.isPending}
+            disabled={exhausted || coolingDown || startMutation.isPending}
             onClick={() => startMutation.mutate()}
           >
             {startMutation.isPending ? (
@@ -108,7 +136,11 @@ export function ExamDetailPage() {
             ) : (
               <>
                 <Play className="mr-1 h-4 w-4" />
-                {exhausted ? "Urinishlar tugagan" : "Imtihonni boshlash"}
+                {exhausted
+                  ? "Urinishlar tugagan"
+                  : coolingDown
+                    ? `Kuting (${cooldownRemaining}s)`
+                    : "Imtihonni boshlash"}
               </>
             )}
           </Button>

@@ -183,6 +183,8 @@ export const exams = pgTable("exams", {
   attemptsAllowed: integer("attempts_allowed").notNull(),
   /** Number of puzzles picked (randomly) from the exam's tasks for each attempt. */
   puzzleCount: integer("puzzle_count").notNull(),
+  /** Seconds a student must wait after finishing an attempt before starting the next one. */
+  cooldownSeconds: integer("cooldown_seconds").notNull().default(60),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -263,8 +265,13 @@ export const examAttempts = pgTable("exam_attempts", {
   /** Frozen puzzle ids (in order) picked at attempt start. */
   puzzleIds: jsonb("puzzle_ids").notNull(),
   status: examAttemptStatus("status").notNull().default("in_progress"),
-  /** Set when status becomes `failed` via a wrong move / timeout; null for abandoned or passed. */
+  /**
+   * First mistake of a failed attempt. Kept for backward compatibility; new attempts also
+   * populate `failDetails` with every mistake. Null for abandoned or passed attempts.
+   */
   failDetail: jsonb("fail_detail").$type<ExamAttemptFailDetail>(),
+  /** Every mistake made during a failed attempt, in order. Null for abandoned or passed attempts. */
+  failDetails: jsonb("fail_details").$type<ExamAttemptFailDetail[]>(),
   startedAt: timestamp("started_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

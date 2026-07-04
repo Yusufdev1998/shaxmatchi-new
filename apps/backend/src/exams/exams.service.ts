@@ -49,6 +49,7 @@ export class ExamsService {
       secondsPerMove: number;
       attemptsAllowed: number;
       puzzleCount: number;
+      cooldownSeconds: number;
       taskIds: string[];
     },
   ) {
@@ -63,6 +64,7 @@ export class ExamsService {
         secondsPerMove: input.secondsPerMove,
         attemptsAllowed: input.attemptsAllowed,
         puzzleCount: input.puzzleCount,
+        cooldownSeconds: input.cooldownSeconds,
       })
       .returning();
     if (!exam) throw new ServiceUnavailableException("Failed to create exam");
@@ -80,6 +82,7 @@ export class ExamsService {
       secondsPerMove: number;
       attemptsAllowed: number;
       puzzleCount: number;
+      cooldownSeconds: number;
       taskIds: string[];
     },
   ) {
@@ -93,6 +96,7 @@ export class ExamsService {
         secondsPerMove: input.secondsPerMove,
         attemptsAllowed: input.attemptsAllowed,
         puzzleCount: input.puzzleCount,
+        cooldownSeconds: input.cooldownSeconds,
       })
       .where(eq(exams.id, examId))
       .returning();
@@ -149,6 +153,7 @@ export class ExamsService {
         id: examAttempts.id,
         status: examAttempts.status,
         failDetail: examAttempts.failDetail,
+        failDetails: examAttempts.failDetails,
         startedAt: examAttempts.startedAt,
         completedAt: examAttempts.completedAt,
       })

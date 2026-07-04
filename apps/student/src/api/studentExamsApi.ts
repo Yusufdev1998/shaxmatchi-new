@@ -30,6 +30,7 @@ export type StudentExamSummary = {
   secondsPerMove: number;
   attemptsAllowed: number;
   puzzleCount: number;
+  cooldownSeconds: number;
   attemptsUsed: number;
   assignedAt: string;
 };
@@ -57,6 +58,7 @@ export type StudentExamAttemptPuzzle = {
 export type StudentExamAttemptStart = {
   attemptId: string;
   secondsPerMove: number;
+  cooldownSeconds: number;
   attemptsLeft: number;
   puzzles: StudentExamAttemptPuzzle[];
 };
@@ -80,10 +82,10 @@ export const studentExamsApi = {
   finalizeAttempt: (
     attemptId: string,
     result: "passed" | "failed",
-    failDetail?: ExamAttemptFailDetail,
+    failDetails?: ExamAttemptFailDetail[],
   ) =>
     api<{ ok: true; status: StudentExamAttemptStatus }>(
       `/student/exams/attempts/${attemptId}`,
-      { method: "PATCH", body: JSON.stringify({ result, failDetail }) },
+      { method: "PATCH", body: JSON.stringify({ result, failDetails }) },
     ),
 };

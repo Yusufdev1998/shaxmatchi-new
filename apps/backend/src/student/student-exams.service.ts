@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import {
   examAssignments,
@@ -76,6 +76,7 @@ export class StudentExamsService {
         secondsPerMove: exams.secondsPerMove,
         attemptsAllowed: exams.attemptsAllowed,
         puzzleCount: exams.puzzleCount,
+        cooldownSeconds: exams.cooldownSeconds,
         attemptsUsed: examAssignments.attemptsUsed,
         assignedAt: examAssignments.assignedAt,
       })
@@ -97,6 +98,7 @@ export class StudentExamsService {
         secondsPerMove: exams.secondsPerMove,
         attemptsAllowed: exams.attemptsAllowed,
         puzzleCount: exams.puzzleCount,
+        cooldownSeconds: exams.cooldownSeconds,
         attemptsUsed: examAssignments.attemptsUsed,
         assignedAt: examAssignments.assignedAt,
       })
@@ -134,6 +136,7 @@ export class StudentExamsService {
         attemptsAllowed: exams.attemptsAllowed,
         secondsPerMove: exams.secondsPerMove,
         puzzleCount: exams.puzzleCount,
+        cooldownSeconds: exams.cooldownSeconds,
       })
       .from(examAssignments)
       .innerJoin(exams, eq(exams.id, examAssignments.examId))
@@ -143,6 +146,29 @@ export class StudentExamsService {
     if (!assignment) throw new NotFoundException("Exam not assigned to this student");
     if (assignment.attemptsUsed >= assignment.attemptsAllowed) {
       throw new ForbiddenException("Urinishlar tugagan");
+    }
+
+    // Cooldown: enforce a wait after the most recently finished attempt (pass or fail).
+    if (assignment.cooldownSeconds > 0) {
+      const lastFinished = await db
+        .select({ completedAt: examAttempts.completedAt })
+        .from(examAttempts)
+        .where(
+          and(
+            eq(examAttempts.assignmentId, assignment.id),
+            ne(examAttempts.status, "in_progress"),
+          ),
+        )
+        .orderBy(desc(examAttempts.completedAt))
+        .limit(1);
+      const completedAt = lastFinished[0]?.completedAt;
+      if (completedAt) {
+        const elapsedSeconds = Math.floor((Date.now() - completedAt.getTime()) / 1000);
+        const remaining = assignment.cooldownSeconds - elapsedSeconds;
+        if (remaining > 0) {
+          throw new ForbiddenException(`Keyingi urinishgacha ${remaining} soniya kuting`);
+        }
+      }
     }
 
     // Fail any earlier still-open attempts and bill them.
@@ -213,6 +239,7 @@ export class StudentExamsService {
     return {
       attemptId: attempt.id,
       secondsPerMove: assignment.secondsPerMove,
+      cooldownSeconds: assignment.cooldownSeconds,
       attemptsLeft: assignment.attemptsAllowed - assignment.attemptsUsed - 1,
       puzzles: picked.map((p) => ({
         id: p.id,
@@ -228,7 +255,8 @@ export class StudentExamsService {
     attemptId: string;
     studentId: string;
     result: "passed" | "failed";
-    failDetail?: ExamAttemptFailDetail;
+    /** Every mistake made during the attempt, in order. Empty/undefined for a clean pass. */
+    failDetails?: ExamAttemptFailDetail[];
   }) {
     const db = this.getDb();
     const rows = await db
@@ -251,12 +279,15 @@ export class StudentExamsService {
       return { ok: true as const, status: row.status };
     }
 
+    const fails = input.result === "failed" ? (input.failDetails ?? []) : [];
     await db
       .update(examAttempts)
       .set({
         status: input.result,
         completedAt: new Date(),
-        failDetail: input.result === "failed" ? (input.failDetail ?? null) : null,
+        // `failDetail` keeps the first mistake for backward compatibility; `failDetails` holds all.
+        failDetail: fails[0] ?? null,
+        failDetails: fails.length > 0 ? fails : null,
       })
       .where(eq(examAttempts.id, input.attemptId));
     await db

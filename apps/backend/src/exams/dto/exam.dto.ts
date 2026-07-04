@@ -20,6 +20,11 @@ export class ExamDto {
   @Max(100)
   puzzleCount!: number;
 
+  @IsInt()
+  @Min(0)
+  @Max(3600)
+  cooldownSeconds!: number;
+
   @IsArray()
   @ArrayNotEmpty()
   @IsString({ each: true })

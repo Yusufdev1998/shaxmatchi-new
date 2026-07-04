@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { Type } from "class-transformer";
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsOptional,
@@ -58,9 +59,10 @@ class FinalizeAttemptDto {
   result!: "passed" | "failed";
 
   @IsOptional()
-  @ValidateNested()
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => FailDetailDto)
-  failDetail?: FailDetailDto;
+  failDetails?: FailDetailDto[];
 }
 
 @Controller("student/exams")
@@ -93,7 +95,7 @@ export class StudentExamsController {
       attemptId,
       studentId: req.user.sub,
       result: dto.result,
-      failDetail: dto.failDetail,
+      failDetails: dto.failDetails,
     });
   }
 }

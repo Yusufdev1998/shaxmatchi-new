@@ -28,6 +28,7 @@ export class ExamsController {
       secondsPerMove: dto.secondsPerMove,
       attemptsAllowed: dto.attemptsAllowed,
       puzzleCount: dto.puzzleCount,
+      cooldownSeconds: dto.cooldownSeconds,
       taskIds: dto.taskIds,
     });
   }
@@ -39,6 +40,7 @@ export class ExamsController {
       secondsPerMove: dto.secondsPerMove,
       attemptsAllowed: dto.attemptsAllowed,
       puzzleCount: dto.puzzleCount,
+      cooldownSeconds: dto.cooldownSeconds,
       taskIds: dto.taskIds,
     });
   }
