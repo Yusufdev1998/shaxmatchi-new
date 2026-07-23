@@ -704,6 +704,7 @@ export function PuzzlePage() {
             arrows={studyBoardShapes?.arrows}
             options={{
               position: fen,
+              boardOrientation: studentSide,
               onPieceDrop: mode === "practice" ? onPracticePieceDrop : mode === "repeat" ? onRepeatPieceDrop : undefined,
             }}
           />

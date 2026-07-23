@@ -20,10 +20,18 @@ type Props = {
   fen: string;
   circles: ExplanationCircle[];
   arrows: BaseChessboardArrow[];
+  /** Side shown at the bottom — matches the variant's selected side. */
+  orientation?: "white" | "black";
   onChange: (next: ExplanationShapes) => void;
 };
 
-export function ExplanationShapesEditor({ fen, circles, arrows, onChange }: Props) {
+export function ExplanationShapesEditor({
+  fen,
+  circles,
+  arrows,
+  orientation = "white",
+  onChange,
+}: Props) {
   const [tool, setTool] = React.useState<"circle" | "arrow">("circle");
   const [arrowStart, setArrowStart] = React.useState<string | null>(null);
   const [shapeColor, setShapeColor] = React.useState<ExplanationShapeColor>(
@@ -169,6 +177,7 @@ export function ExplanationShapesEditor({ fen, circles, arrows, onChange }: Prop
           arrows={arrows}
           options={{
             position: fen,
+            boardOrientation: orientation,
             allowDragging: false,
             allowDrawingArrows: false,
             squareStyles: arrowStart

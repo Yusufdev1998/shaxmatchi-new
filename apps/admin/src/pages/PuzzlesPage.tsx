@@ -351,6 +351,7 @@ export function PuzzlePracticePage() {
             arrows={studyBoardShapes?.arrows}
             options={{
               position: fen,
+              boardOrientation: puzzle.studentSide === "black" ? "black" : "white",
               onPieceDrop:
                 mode === "practice" ? onPracticePieceDrop : undefined,
             }}

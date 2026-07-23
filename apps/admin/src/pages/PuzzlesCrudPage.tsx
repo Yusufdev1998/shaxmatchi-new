@@ -200,7 +200,7 @@ function normalizeMovesForEditSnapshot(moves: PuzzleMove[]): unknown[] {
 
 function puzzleEditSnapshotJson(input: {
   name: string;
-  studentSide: PuzzleStudentSide;
+  studentSide: PuzzleStudentSide | null;
   pgn: string;
   moves: PuzzleMove[];
 }): string {
@@ -228,7 +228,8 @@ export function PuzzlesCrudPage() {
   const navigate = useNavigate();
   const params = useParams();
   const [newName, setNewName] = React.useState("");
-  const [studentSide, setStudentSide] = React.useState<PuzzleStudentSide>("white");
+  /** No default — the teacher must pick a side before a variant can be saved. */
+  const [studentSide, setStudentSide] = React.useState<PuzzleStudentSide | null>(null);
   const [newPgn, setNewPgn] = React.useState("");
   const [newMoves, setNewMoves] = React.useState<PuzzleMove[]>([]);
   const [newPgnNormalized, setNewPgnNormalized] = React.useState<string>("");
@@ -501,7 +502,7 @@ export function PuzzlesCrudPage() {
     editBaselineRef.current = null;
     setEditingPuzzleId(null);
     setNewName("");
-    setStudentSide("white");
+    setStudentSide(null);
     setNewPgn("");
     setNewMoves([]);
     setNewPgnNormalized("");
@@ -649,7 +650,7 @@ export function PuzzlesCrudPage() {
           i === newMoveDialogIdx ? { ...x, audioUrl: res.filename } : x,
         );
         setNewMoves(updated);
-        if (editingPuzzleId) {
+        if (editingPuzzleId && studentSide) {
           void updatePuzzleMutation
             .mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide })
             .catch(() => {});
@@ -833,6 +834,10 @@ export function PuzzlesCrudPage() {
   async function savePuzzle() {
     const name = newName.trim();
     if (!name) return;
+    if (!studentSide) {
+      setError("Tomonni tanlang (oqlar yoki qoralar).");
+      return;
+    }
     if (newMoves.length === 0) {
       setError("PGN kiriting (hali yurishlar yo'q).");
       return;
@@ -862,6 +867,10 @@ export function PuzzlesCrudPage() {
         const name = newName.trim();
         if (!name) {
           setError("Variant nomi kiriting.");
+          return;
+        }
+        if (!studentSide) {
+          setError("Tomonni tanlang (oqlar yoki qoralar).");
           return;
         }
         if (newMoves.length === 0) {
@@ -992,7 +1001,9 @@ export function PuzzlesCrudPage() {
             placeholder="Variant nomi"
           />
           <div className="mt-3">
-            <div className="text-xs font-medium text-slate-700">O'quvchi tomoni (mashq / takrorlash)</div>
+            <div className="text-xs font-medium text-slate-700">
+              Tomon <span className="text-red-600">*</span>
+            </div>
             <div className="mt-1.5 flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -1014,7 +1025,9 @@ export function PuzzlesCrudPage() {
               </Button>
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              Boshlang'ich doskada qaysi tomon yurishlarini o'quvchi bajaradi; boshqa tomon avtomatik.
+              {studentSide === null
+                ? "Tomonni tanlang — variantni saqlash uchun majburiy."
+                : "Tanlangan tomon o'quvchi doskasida pastda turadi va uning yurishlarini o'quvchi bajaradi."}
             </div>
           </div>
           <textarea
@@ -1033,7 +1046,7 @@ export function PuzzlesCrudPage() {
             <Button
               type="button"
               size="sm"
-              disabled={busy || (isEditing && !editingDirty)}
+              disabled={busy || !studentSide || (isEditing && !editingDirty)}
               className={
                 isEditing && editingDirty
                   ? "bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/80"
@@ -1163,6 +1176,7 @@ export function PuzzlesCrudPage() {
             />
             <ExplanationShapesEditor
               fen={fenForExplanationPreview(newMoves, newMoveDialogIdx!)}
+              orientation={studentSide ?? "white"}
               circles={newMoveDialogShapes.circles}
               arrows={newMoveDialogShapes.arrows}
               onChange={setNewMoveDialogShapes}
@@ -1200,7 +1214,7 @@ export function PuzzlesCrudPage() {
                       if (newMoveDialogIdx !== null) {
                         const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: undefined } : x);
                         setNewMoves(updated);
-                        if (editingPuzzleId) {
+                        if (editingPuzzleId && studentSide) {
                           void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
                         }
                       }
