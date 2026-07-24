@@ -35,6 +35,9 @@ function isOpponentMoveAtIndex(side: PuzzleStudentSide, moveIdx: number): boolea
   return !isStudentMoveAtIndex(side, moveIdx);
 }
 
+/** Pause before the opponent replies mid-line; the line's opening move skips it. */
+const OPPONENT_MOVE_DELAY_MS = 450;
+
 const CHESS_KING_WHITE = "\u2654";
 const CHESS_KING_BLACK = "\u265a";
 
@@ -401,6 +404,9 @@ export function PuzzlePage() {
     const side: PuzzleStudentSide = puzzle.studentSide === "black" ? "black" : "white";
     if (!isOpponentMoveAtIndex(side, moveIdx)) return;
     stopAutoplay();
+    // Black-side variants open with White's move; play it instantly so the student
+    // lands on their own first decision instead of watching the start position.
+    const delayMs = moveIdx === 0 ? 0 : OPPONENT_MOVE_DELAY_MS;
     autoplayRef.current = window.setTimeout(() => {
       const expectedSan = puzzleMoves[moveIdx]?.san;
       if (!expectedSan) return;
@@ -418,7 +424,7 @@ export function PuzzlePage() {
       }
       setGame(next);
       setMoveIdx((i) => i + 1);
-    }, 450);
+    }, delayMs);
   }, [handlePracticeLineCompleted, mode, puzzle, fen, moveIdx, puzzleMoves, stopAutoplay]);
 
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);

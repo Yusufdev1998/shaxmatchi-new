@@ -260,6 +260,9 @@ export function ExamTakePage() {
     if (isStudentMoveAtIndex(puzzle, moveIdx)) return;
 
     const expected = puzzle.moves[moveIdx]!.san;
+    // Black-side puzzles open with White's move; play it instantly so the student
+    // lands on their own first decision instead of watching the start position.
+    const delayMs = moveIdx === 0 ? 0 : OPPONENT_MOVE_DELAY_MS;
     opponentTimerRef.current = window.setTimeout(() => {
       opponentTimerRef.current = null;
       let moved = false;
@@ -275,7 +278,7 @@ export function ExamTakePage() {
       });
       if (moved) playMoveSound();
       setMoveIdx((i) => i + 1);
-    }, OPPONENT_MOVE_DELAY_MS);
+    }, delayMs);
     return () => {
       if (opponentTimerRef.current) {
         window.clearTimeout(opponentTimerRef.current);
