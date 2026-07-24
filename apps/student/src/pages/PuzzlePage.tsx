@@ -427,6 +427,21 @@ export function PuzzlePage() {
     }, delayMs);
   }, [handlePracticeLineCompleted, mode, puzzle, fen, moveIdx, puzzleMoves, stopAutoplay]);
 
+  /** True when the line opens with the opponent's move — i.e. a black-side variant. */
+  const opensWithOpponentMove = puzzle
+    ? isOpponentMoveAtIndex(puzzle.studentSide === "black" ? "black" : "white", 0)
+    : false;
+
+  // Study mode steps manually, but the opening move belongs to the auto side, so play
+  // it on entry — otherwise the board just waits on the start position.
+  React.useEffect(() => {
+    if (mode !== "study") return;
+    if (!opensWithOpponentMove) return;
+    if (moveIdx !== 0) return;
+    if (puzzleMoves.length === 0) return;
+    setBoardToMove(1);
+  }, [mode, opensWithOpponentMove, moveIdx, puzzleMoves.length, setBoardToMove]);
+
   React.useEffect(() => () => stopAutoplay(), [stopAutoplay]);
 
   React.useEffect(
@@ -723,7 +738,7 @@ export function PuzzlePage() {
               variant="secondary"
               className="h-7 shrink-0 gap-0 rounded-md px-1.5 text-xs font-medium leading-none sm:px-2"
               onClick={() => setBoardToMove(moveIdx - 1)}
-              disabled={moveIdx <= 0}
+              disabled={moveIdx <= (opensWithOpponentMove ? 1 : 0)}
             >
               <ChevronLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
               <span className="-ml-0.5">oldingi</span>
