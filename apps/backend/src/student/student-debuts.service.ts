@@ -17,6 +17,7 @@ import {
   tasks,
 } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
+import { PuzzleCycleService } from "../puzzle-cycle/puzzle-cycle.service";
 
 /** Xato qilgan paytdagi mashq bo‘yicha progress foizi (0–100), moveIdx va jami yurishlar soni asosida. */
 function mashqFailureProgressPercent(moveIdx: number, totalMoves: number): number {
@@ -27,7 +28,10 @@ function mashqFailureProgressPercent(moveIdx: number, totalMoves: number): numbe
 
 @Injectable()
 export class StudentDebutsService {
-  constructor(@Inject(DRIZZLE_DB) private readonly db: DrizzleDb | null) {}
+  constructor(
+    @Inject(DRIZZLE_DB) private readonly db: DrizzleDb | null,
+    private readonly puzzleCycle: PuzzleCycleService,
+  ) {}
 
   private getDb(): DrizzleDb {
     if (!this.db) throw new ServiceUnavailableException("Database is not configured");
@@ -542,11 +546,17 @@ export class StudentDebutsService {
               practiceSuccessCount: puzzleAssignments.practiceSuccessCount,
             });
     const next = updated[0];
+
+    // Round finished? Either the variant is passed (all attempts correct → next variant opens in
+    // o'rganish) or it goes back to o'rganish so the student can study and try the round again.
+    const cycle = await this.puzzleCycle.evaluatePracticeCycle(assignment.assignmentId);
+
     return {
       ok: true as const,
       practiceLimit: next?.practiceLimit ?? assignment.practiceLimit ?? null,
       practiceAttemptsUsed: next?.practiceAttemptsUsed ?? used + 1,
       practiceSuccessCount: next?.practiceSuccessCount ?? 0,
+      cycle,
     };
   }
 }

@@ -47,6 +47,7 @@ NestJS modules in `apps/backend/src/`:
 - `users/` — Student/teacher CRUD
 - `debuts/` — Chess content hierarchy: debut levels → courses → modules → tasks → puzzles
 - `student/` — Puzzle assignments, learning progress tracking, practice attempts
+- `puzzle-cycle/` — Automatic study↔practice cycle: a 5-minute cron flips expired study assignments to practice; when a practice round ends, all-correct passes the puzzle and auto-opens the task's next puzzle in study mode, any failure reverts it to study. Repeats until every puzzle in the task is passed. Per-assignment settings `studyHours` / `cyclePracticeLimit` remember the teacher's choices (defaults: 24h, 10 attempts)
 - `admin-stats/` — Analytics (learning time, practice stats)
 - `uploads/` — Audio file upload/serve via multer
 - `telegram/` — Telegram bot service (grammy)

@@ -77,11 +77,24 @@ export type StudentPuzzleDetail = {
   dueAt: string | null;
 };
 
+/**
+ * What the automatic cycle did once the mashq round ended:
+ * - `in_progress` — urinishlar hali qolgan;
+ * - `passed` — barcha urinish to'g'ri, variant bajarildi va keyingisi o'rganishda ochildi;
+ * - `reverted` — xato bo'lgan, variant o'rganish rejimiga qaytarildi.
+ */
+export type PuzzleCycleOutcome =
+  | { status: "in_progress" }
+  | { status: "passed"; nextPuzzle: { id: string; name: string } | null; taskCompleted: boolean }
+  | { status: "reverted"; dueAt: string; studyHours: number };
+
 export type ConsumePracticeAttemptResult = {
   ok: true;
   practiceLimit: number | null;
   practiceAttemptsUsed: number;
   practiceSuccessCount: number;
+  /** Absent on older backends that don't run the automatic cycle. */
+  cycle?: PuzzleCycleOutcome;
 };
 
 export type AddLearningSecondsResult = { learningSecondsTotal: number };

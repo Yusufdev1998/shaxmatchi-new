@@ -127,6 +127,13 @@
       "when": 1783144604901,
       "tag": "0017_adorable_stepford_cuckoos",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784881510279,
+      "tag": "0018_happy_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

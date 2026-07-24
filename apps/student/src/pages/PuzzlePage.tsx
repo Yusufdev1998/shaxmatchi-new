@@ -13,8 +13,11 @@ import {
   ChevronRight,
   CheckCircle,
   RotateCcw,
+  Trophy,
+  BookMarked,
+  ArrowRight,
 } from "lucide-react";
-import { studentDebutsApi, type PuzzleMove } from "../api/studentDebutsApi";
+import { studentDebutsApi, type PuzzleCycleOutcome, type PuzzleMove } from "../api/studentDebutsApi";
 import { studentSettingsApi } from "../api/studentSettingsApi";
 import { API_URL } from "../auth/auth";
 import {
@@ -127,6 +130,8 @@ export function PuzzlePage() {
   const [moveIdx, setMoveIdx] = React.useState(0);
   const [isShowingWrongMove, setIsShowingWrongMove] = React.useState(false);
   const [isLimitRedirecting, setIsLimitRedirecting] = React.useState(false);
+  /** Set when the mashq round ended and the automatic cycle moved this variant on (or back). */
+  const [cycleResult, setCycleResult] = React.useState<PuzzleCycleOutcome | null>(null);
 
   const fen = game.fen();
 
@@ -244,7 +249,12 @@ export function PuzzlePage() {
     navigate(returnTo, { replace: true });
   }, [location.state, navigate]);
 
-  /** Each full mashq (success or failure) consumes one urinish; refetch so UI shows updated count. */
+  /**
+   * Each full mashq (success or failure) consumes one urinish; refetch so UI shows updated count.
+   * When the urinishlar round ends, the backend either passes the variant (keyingi variant
+   * o'rganishda ochiladi) or sends it back to o'rganish — that outcome opens a dialog instead of
+   * refetching, because the assignment the student was practising no longer exists in that shape.
+   */
   const consumePracticeOutcome = React.useCallback(
     (outcome: "success" | "failure", failureMoveIndex?: number) => {
       if (!id) return;
@@ -259,12 +269,19 @@ export function PuzzlePage() {
             : { outcome },
         )
         .catch(() => undefined)
-        .then(async () => {
+        .then(async (res) => {
           await queryClient.invalidateQueries({ queryKey: ["studentDebuts", "hierarchy"] });
+          const cycle = res?.cycle;
+          if (cycle && cycle.status !== "in_progress") {
+            skipNextModeSelectionRef.current = false;
+            stopAutoplay();
+            setCycleResult(cycle);
+            return undefined;
+          }
           return puzzleQuery.refetch();
         });
     },
-    [id, puzzle?.mode, puzzleQuery, queryClient],
+    [id, puzzle?.mode, puzzleQuery, queryClient, stopAutoplay],
   );
 
   /** Illegal drag in mashq: just give feedback and snap the piece back — no urinish is consumed. */
@@ -529,19 +546,22 @@ export function PuzzlePage() {
   );
 
   React.useEffect(() => {
+    // The cycle dialog explains what happened to the variant — don't redirect out from under it.
+    if (cycleResult) return;
     const rawError: unknown = puzzleQuery.error;
     const errMsg = rawError instanceof Error ? rawError.message.toLowerCase() : "";
     if (errMsg.includes("limiti tugagan")) {
       triggerLimitRedirect();
     }
-  }, [puzzleQuery.error, triggerLimitRedirect]);
+  }, [cycleResult, puzzleQuery.error, triggerLimitRedirect]);
 
   React.useEffect(() => {
     // Limit reached after a wrong move: redirect. After a successful finish, stay on the completion dialog.
+    if (cycleResult) return;
     if (mode === "practice" && isPracticeLimitReached && !isPracticeComplete) {
       triggerLimitRedirect();
     }
-  }, [isPracticeComplete, isPracticeLimitReached, mode, triggerLimitRedirect]);
+  }, [cycleResult, isPracticeComplete, isPracticeLimitReached, mode, triggerLimitRedirect]);
 
   const learningFlushRef = React.useRef<number>(Date.now());
 
@@ -583,6 +603,111 @@ export function PuzzlePage() {
 
   if (!id) {
     return <div className="text-sm text-slate-600">Variant id topilmadi</div>;
+  }
+
+  // Mashq round finished: the automatic cycle already moved this variant on (or back to
+  // o'rganish), so the board is over — show what happened and where to go next.
+  if (cycleResult && cycleResult.status === "passed") {
+    const nextPuzzle = cycleResult.nextPuzzle;
+    return (
+      <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cycle-passed-title"
+          className="w-full max-w-md rounded-2xl border border-emerald-200/90 bg-gradient-to-b from-white to-emerald-50/95 p-6 shadow-2xl ring-1 ring-emerald-500/15"
+        >
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
+            <Trophy className="h-9 w-9" strokeWidth={2} aria-hidden />
+          </div>
+          <h2 id="cycle-passed-title" className="text-center text-xl font-bold tracking-tight text-slate-900">
+            {cycleResult.taskCompleted ? "Vazifa to'liq bajarildi!" : "Barakalla! Variant bajarildi"}
+          </h2>
+          <p className="mt-2 text-center text-sm text-slate-600">
+            {cycleResult.taskCompleted
+              ? "Ushbu vazifadagi barcha variantlarni muvaffaqiyatli yakunladingiz."
+              : "Barcha urinishlarni xatosiz bajardingiz."}
+          </p>
+          {nextPuzzle ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-white/80 p-3 text-center">
+              <div className="text-xs font-medium uppercase tracking-wide text-emerald-700">
+                Keyingi variant ochildi
+              </div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">{nextPuzzle.name}</div>
+              <div className="mt-1 text-xs text-slate-600">📘 O'rganish rejimi</div>
+            </div>
+          ) : null}
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            {nextPuzzle ? (
+              <Button
+                type="button"
+                className="w-full sm:flex-1"
+                onClick={() => {
+                  setCycleResult(null);
+                  navigate(`/puzzle/${nextPuzzle.id}`, {
+                    replace: true,
+                    state: (location.state as { returnTo?: string } | null) ?? undefined,
+                  });
+                }}
+              >
+                Keyingi variantga <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant={nextPuzzle ? "secondary" : "default"}
+              className="w-full sm:flex-1"
+              onClick={goBackToVariantsList}
+            >
+              Variantlar sahifasiga
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (cycleResult && cycleResult.status === "reverted") {
+    return (
+      <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cycle-reverted-title"
+          className="w-full max-w-md rounded-2xl border border-amber-200/90 bg-gradient-to-b from-white to-amber-50/95 p-6 shadow-2xl ring-1 ring-amber-500/15"
+        >
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600 shadow-inner">
+            <BookMarked className="h-9 w-9" strokeWidth={2} aria-hidden />
+          </div>
+          <h2 id="cycle-reverted-title" className="text-center text-xl font-bold tracking-tight text-slate-900">
+            O'rganish rejimiga qaytdingiz
+          </h2>
+          <p className="mt-2 text-center text-sm text-slate-600">
+            Mashqda xatolar bo'ldi, shuning uchun bu variant yana o'rganish rejimida ochildi.
+            Yurishlarni o'rganing — {cycleResult.studyHours} soatdan so'ng mashq qaytadan boshlanadi.
+          </p>
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button
+              type="button"
+              className="w-full sm:flex-1"
+              onClick={() => {
+                setCycleResult(null);
+                loadedPuzzleIdRef.current = null;
+                setMode(null);
+                setMoveIdx(0);
+                setGame(new Chess());
+                void puzzleQuery.refetch();
+              }}
+            >
+              <BookOpen className="mr-2 h-4 w-4" /> O'rganishni boshlash
+            </Button>
+            <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={goBackToVariantsList}>
+              Variantlar sahifasiga
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (puzzleQuery.isLoading) {

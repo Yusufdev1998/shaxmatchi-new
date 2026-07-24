@@ -124,16 +124,23 @@ export function DebutPuzzlesPage() {
                   practiceLimit !== null &&
                   practiceAttemptsUsed !== null &&
                   practiceAttemptsUsed >= practiceLimit;
+                /** Barcha urinish xatosiz bajarilgan — variant siklda yakunlangan. */
+                const isPassed = Boolean(p.assignment.completedAt);
                 const isStudyDisabled = p.assignment.mode !== "new";
-                const isPracticeDisabled = p.assignment.mode !== "test" || isPracticeLimitReached;
-                const studyHint = p.assignment.mode === "test"
-                  ? "Bu variant faqat mashq rejimida tayinlangan."
-                  : "O'rganish rejimi hozir mavjud emas.";
-                const practiceHint = p.assignment.mode !== "test"
-                  ? "Bu variant faqat o'rganish rejimida tayinlangan."
-                  : isPracticeLimitReached
-                    ? "Mashq urinishlar limiti tugagan."
-                    : "Mashq rejimi hozir mavjud emas.";
+                const isPracticeDisabled =
+                  p.assignment.mode !== "test" || isPracticeLimitReached || isPassed;
+                const studyHint = isPassed
+                  ? "Bu variant bajarildi."
+                  : p.assignment.mode === "test"
+                    ? "Bu variant faqat mashq rejimida tayinlangan."
+                    : "O'rganish rejimi hozir mavjud emas.";
+                const practiceHint = isPassed
+                  ? "Bu variant bajarildi."
+                  : p.assignment.mode !== "test"
+                    ? "Bu variant faqat o'rganish rejimida tayinlangan."
+                    : isPracticeLimitReached
+                      ? "Mashq urinishlar limiti tugagan."
+                      : "Mashq rejimi hozir mavjud emas.";
                 const hint = iconHintByPuzzleId[p.id];
 
                 return (

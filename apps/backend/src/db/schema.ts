@@ -146,6 +146,16 @@ export const puzzleAssignments = pgTable(
     learningSecondsTotal: integer("learning_seconds_total").notNull().default(0),
     /** Optional deadline timestamp for study-mode assignments (computed from hours-ahead). */
     dueAt: timestamp("due_at", { withTimezone: true }),
+    /**
+     * Teacher's chosen study window in hours, remembered for the auto cycle: every automatic
+     * o'rganish assignment (next variant, or revert after a failed mashq round) reuses it.
+     */
+    studyHours: integer("study_hours"),
+    /**
+     * Teacher's chosen mashq attempts limit, remembered for the auto cycle: every automatic
+     * flip to mashq reuses it (falls back to the default when unset).
+     */
+    cyclePracticeLimit: integer("cycle_practice_limit"),
     assignedAt: timestamp("assigned_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

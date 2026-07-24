@@ -5,15 +5,11 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { Cron, CronExpression } from "@nestjs/schedule";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import { courses, debutLevels, modules, puzzleAssignments, puzzles, tasks, users } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
 import { TelegramBotService } from "../telegram/telegram-bot.service";
-
-/** When a study assignment's deadline expires, we flip it to practice with this many attempts. */
-const STUDY_EXPIRY_PRACTICE_LIMIT = 10;
 
 @Injectable()
 export class DebutsService {
@@ -383,7 +379,11 @@ export class DebutsService {
     if (!student || student.type !== "student") throw new NotFoundException("Student not found");
 
     const existingRows = await db
-      .select({ id: puzzleAssignments.id })
+      .select({
+        id: puzzleAssignments.id,
+        studyHours: puzzleAssignments.studyHours,
+        cyclePracticeLimit: puzzleAssignments.cyclePracticeLimit,
+      })
       .from(puzzleAssignments)
       .where(and(eq(puzzleAssignments.puzzleId, input.puzzleId), eq(puzzleAssignments.studentId, input.studentId)))
       .limit(1);
@@ -393,6 +393,11 @@ export class DebutsService {
       input.mode === "new" && input.dueInHours && input.dueInHours > 0
         ? new Date(Date.now() + input.dueInHours * 3600 * 1000)
         : null;
+
+    // Remembered for the automatic cycle: every later auto o'rganish round reuses the teacher's
+    // deadline length, and every auto mashq round reuses the teacher's attempts limit.
+    const studyHours = input.dueInHours ?? existing?.studyHours ?? null;
+    const cyclePracticeLimit = input.practiceLimit ?? existing?.cyclePracticeLimit ?? null;
 
     let assignment;
     if (existing) {
@@ -406,6 +411,8 @@ export class DebutsService {
           practiceSuccessCount: 0,
           practiceFailureProgressSum: 0,
           learningSecondsTotal: 0,
+          studyHours,
+          cyclePracticeLimit,
           dueAt: dueAtForMode,
           assignedAt: new Date(),
           completedAt: null,
@@ -425,6 +432,8 @@ export class DebutsService {
           practiceAttemptsUsed: 0,
           practiceSuccessCount: 0,
           practiceFailureProgressSum: 0,
+          studyHours,
+          cyclePracticeLimit,
           dueAt: dueAtForMode,
         })
         .returning();
@@ -475,82 +484,6 @@ export class DebutsService {
     return assignment;
   }
 
-  /**
-   * Every 5 minutes, flip study-mode assignments whose deadline has passed to
-   * practice mode with a default attempts limit, and notify each student.
-   */
-  @Cron(CronExpression.EVERY_5_MINUTES)
-  async sweepExpiredStudyAssignments(): Promise<void> {
-    if (!this.db) return;
-    const db = this.getDb();
-    const now = new Date();
-
-    const expired = await db
-      .select({
-        assignmentId: puzzleAssignments.id,
-        studentId: puzzleAssignments.studentId,
-        puzzleName: puzzles.name,
-        studentTelegramId: users.telegramId,
-      })
-      .from(puzzleAssignments)
-      .innerJoin(puzzles, eq(puzzles.id, puzzleAssignments.puzzleId))
-      .innerJoin(users, eq(users.id, puzzleAssignments.studentId))
-      .where(
-        and(
-          eq(puzzleAssignments.mode, "new"),
-          isNotNull(puzzleAssignments.dueAt),
-          lte(puzzleAssignments.dueAt, now),
-          isNull(puzzleAssignments.completedAt),
-        ),
-      );
-
-    if (expired.length === 0) return;
-
-    const ids = expired.map((r) => r.assignmentId);
-    await db
-      .update(puzzleAssignments)
-      .set({
-        mode: "test",
-        practiceLimit: STUDY_EXPIRY_PRACTICE_LIMIT,
-        practiceAttemptsUsed: 0,
-        practiceSuccessCount: 0,
-        practiceFailureProgressSum: 0,
-        dueAt: null,
-        assignedAt: now,
-      })
-      .where(inArray(puzzleAssignments.id, ids));
-
-    this.logger.log(`Flipped ${expired.length} study assignment(s) to practice mode after deadline.`);
-
-    for (const row of expired) {
-      if (!row.studentTelegramId) continue;
-      const message =
-        `🎯 O'rganish muddati tugadi\n\n` +
-        `Nomi: ${row.puzzleName}\n` +
-        `Rejim: 🎯 Mashq\n` +
-        `Urinishlar: ${STUDY_EXPIRY_PRACTICE_LIMIT}\n\n` +
-        `Shaxmatchini ochib mashq qilishni boshlang.`;
-      const spokenText =
-        `O'rganish muddati tugadi. Nomi: ${row.puzzleName}. Endi mashq rejimiga o'tdingiz. ` +
-        `Sizda ${STUDY_EXPIRY_PRACTICE_LIMIT} ta urinish bor. Shaxmatchini ochib mashq qilishni boshlang.`;
-
-      const telegramId = row.studentTelegramId;
-      const studentId = row.studentId;
-      void (async () => {
-        const voiceSent = await this.telegramBot.sendSpokenMessage(telegramId, spokenText, {
-          caption: message,
-        });
-        if (!voiceSent) {
-          await this.telegramBot.sendMessage(telegramId, message).catch((err) => {
-            this.logger.warn(
-              `sweepExpiredStudyAssignments notify fallback failed (student=${studentId}): ${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
-        }
-      })();
-    }
-  }
-
   async listPuzzleAssignments(input: {
     levelId: string;
     courseId: string;
@@ -575,6 +508,8 @@ export class DebutsService {
         practiceFailureProgressSum: puzzleAssignments.practiceFailureProgressSum,
         learningSecondsTotal: puzzleAssignments.learningSecondsTotal,
         dueAt: puzzleAssignments.dueAt,
+        studyHours: puzzleAssignments.studyHours,
+        cyclePracticeLimit: puzzleAssignments.cyclePracticeLimit,
         assignedAt: puzzleAssignments.assignedAt,
         completedAt: puzzleAssignments.completedAt,
       })

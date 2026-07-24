@@ -62,6 +62,10 @@ export type PuzzleAssignment = {
   learningSecondsTotal: number;
   /** Absolute deadline timestamp (ISO) for study-mode assignments (null otherwise). */
   dueAt: string | null;
+  /** O'rganish oynasi (soat) — avtomatik sikl har bir yangi o'rganish bosqichida shuni qayta ishlatadi. */
+  studyHours?: number | null;
+  /** Mashq urinishlari limiti — avtomatik sikl mashqqa o'tkazganda shuni qayta ishlatadi. */
+  cyclePracticeLimit?: number | null;
   assignedAt: string;
   completedAt: string | null;
 };

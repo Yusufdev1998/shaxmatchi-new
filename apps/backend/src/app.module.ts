@@ -9,6 +9,7 @@ import { DebutsModule } from "./debuts/debuts.module";
 import { DbModule } from "./db/db.module";
 import { ExamsModule } from "./exams/exams.module";
 import { PushModule } from "./push/push.module";
+import { PuzzleCycleModule } from "./puzzle-cycle/puzzle-cycle.module";
 import { SettingsModule } from "./settings/settings.module";
 import { StudentModule } from "./student/student.module";
 import { TelegramModule } from "./telegram/telegram.module";
@@ -24,6 +25,7 @@ import { UploadsModule } from "./uploads/uploads.module";
     DebutsModule,
     ExamsModule,
     PushModule,
+    PuzzleCycleModule,
     SettingsModule,
     StudentModule,
     TelegramModule,

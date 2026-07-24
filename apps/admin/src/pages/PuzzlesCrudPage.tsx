@@ -64,6 +64,24 @@ function hoursRemainingFromIso(iso: string | null | undefined): string {
   return String(Math.max(1, Math.ceil(diffMs / 3600000)));
 }
 
+/**
+ * Muddat maydonining boshlang'ich qiymati: qolgan soat, aks holda avtomatik sikl uchun
+ * eslab qolingan o'rganish oynasi (mashq bosqichida dueAt bo'lmaydi).
+ */
+function studyHoursFieldValue(a?: { dueAt: string | null; studyHours?: number | null } | null): string {
+  const remaining = hoursRemainingFromIso(a?.dueAt);
+  if (remaining) return remaining;
+  return a?.studyHours ? String(a.studyHours) : "";
+}
+
+/** Mashq limiti maydoni: joriy limit, aks holda siklda eslab qolingan limit. */
+function practiceLimitFieldValue(
+  a?: { practiceLimit: number | null; cyclePracticeLimit?: number | null } | null,
+): string {
+  const value = a?.practiceLimit ?? a?.cyclePracticeLimit ?? null;
+  return value ? String(value) : "";
+}
+
 function assignmentModeLabel(mode: PuzzleAssignmentMode): string {
   return mode === "test" ? "mashq" : "o'rganish";
 }
@@ -400,6 +418,8 @@ export function PuzzlesCrudPage() {
         practiceFailureProgressSum: number;
         learningSecondsTotal: number;
         dueAt: string | null;
+        studyHours?: number | null;
+        cyclePracticeLimit?: number | null;
         assignedAt: string;
         completedAt: string | null;
       }
@@ -456,8 +476,8 @@ export function PuzzlesCrudPage() {
       setAssignStudentId(firstId);
       const existing = assignmentsByStudentId.get(firstId);
       setAssignMode(existing?.mode ?? "new");
-      setAssignPracticeLimit(existing?.practiceLimit ? String(existing.practiceLimit) : "");
-      setAssignDueInHours(hoursRemainingFromIso(existing?.dueAt));
+      setAssignPracticeLimit(practiceLimitFieldValue(existing));
+      setAssignDueInHours(studyHoursFieldValue(existing));
     }
   }, [assignOpenForPuzzleId, assignStudentId, students, assignmentsByStudentId]);
 
@@ -1619,8 +1639,8 @@ export function PuzzlesCrudPage() {
                         setAssignStudentId(id);
                         const existing = id ? assignmentsByStudentId.get(id) : null;
                         setAssignMode(existing?.mode ?? "new");
-                        setAssignPracticeLimit(existing?.practiceLimit ? String(existing.practiceLimit) : "");
-                        setAssignDueInHours(hoursRemainingFromIso(existing?.dueAt));
+                        setAssignPracticeLimit(practiceLimitFieldValue(existing));
+                        setAssignDueInHours(studyHoursFieldValue(existing));
                       }}
                       disabled={assignBusy}
                     >
@@ -1660,9 +1680,8 @@ export function PuzzlesCrudPage() {
                       className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-400"
                       value={assignMode}
                       onChange={(e) => {
-                        const nextMode = e.target.value as PuzzleAssignmentMode;
-                        setAssignMode(nextMode);
-                        if (nextMode !== "test") setAssignPracticeLimit("");
+                        // Both fields feed the automatic cycle, so keep them when the mode changes.
+                        setAssignMode(e.target.value as PuzzleAssignmentMode);
                       }}
                       disabled={assignBusy || !assignStudentId}
                     >
@@ -1672,30 +1691,10 @@ export function PuzzlesCrudPage() {
                   </label>
                 </div>
 
-                {assignMode === "test" ? (
-                  <label className="mt-3 grid gap-1">
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1">
                     <span className="text-xs font-medium text-slate-700">
-                      Mashq urinishlar limiti (ixtiyoriy)
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      inputMode="numeric"
-                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-400"
-                      value={assignPracticeLimit}
-                      onChange={(e) => setAssignPracticeLimit(e.target.value)}
-                      disabled={assignBusy || !assignStudentId}
-                      placeholder="Cheklanmagan"
-                    />
-                    <span className="text-xs text-slate-500">
-                      Bo'sh qoldirilsa, mashq urinishlari cheklanmaydi.
-                    </span>
-                  </label>
-                ) : (
-                  <label className="mt-3 grid gap-1">
-                    <span className="text-xs font-medium text-slate-700">
-                      Muddat — necha soatdan keyin (ixtiyoriy)
+                      O'rganish muddati — necha soat (ixtiyoriy)
                     </span>
                     <input
                       type="number"
@@ -1710,10 +1709,41 @@ export function PuzzlesCrudPage() {
                       placeholder="Masalan, 24"
                     />
                     <span className="text-xs text-slate-500">
-                      Bo'sh qoldirilsa, muddat belgilanmaydi. Tayinlash vaqtidan boshlab hisoblanadi.
+                      {assignMode === "new"
+                        ? "Bo'sh qoldirilsa, muddat belgilanmaydi. Tayinlash vaqtidan boshlab hisoblanadi."
+                        : "Avtomatik sikl o'rganishga qaytarganda shu muddat ishlatiladi (bo'sh — 24 soat)."}
                     </span>
                   </label>
-                )}
+
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-slate-700">
+                      Mashq urinishlar limiti (ixtiyoriy)
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      inputMode="numeric"
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-400"
+                      value={assignPracticeLimit}
+                      onChange={(e) => setAssignPracticeLimit(e.target.value)}
+                      disabled={assignBusy || !assignStudentId}
+                      placeholder={assignMode === "test" ? "Cheklanmagan" : "10"}
+                    />
+                    <span className="text-xs text-slate-500">
+                      {assignMode === "test"
+                        ? "Bo'sh qoldirilsa, mashq urinishlari cheklanmaydi."
+                        : "Muddat tugagach mashq shu urinish soni bilan boshlanadi (bo'sh — 10 ta)."}
+                    </span>
+                  </label>
+                </div>
+
+                <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+                  Avtomatik sikl: o'rganish muddati tugagach mashq boshlanadi. Barcha urinish xatosiz
+                  bo'lsa — variant bajarildi va vazifadagi keyingi variant o'rganish rejimida avtomatik
+                  ochiladi. Xato bo'lsa — shu variant o'rganish rejimiga qaytariladi. Sikl vazifadagi
+                  barcha variantlar bajarilguncha davom etadi.
+                </p>
 
                 {students.length > 0 ? (
                   <div className="mt-3 max-h-52 overflow-auto rounded-lg border border-slate-200">
@@ -1737,8 +1767,8 @@ export function PuzzlesCrudPage() {
                               if (assignBusy) return;
                               setAssignStudentId(s.id);
                               setAssignMode(a?.mode ?? "new");
-                              setAssignPracticeLimit(a?.practiceLimit ? String(a.practiceLimit) : "");
-                              setAssignDueInHours(hoursRemainingFromIso(a?.dueAt));
+                              setAssignPracticeLimit(practiceLimitFieldValue(a));
+                              setAssignDueInHours(studyHoursFieldValue(a));
                             }}
                             onKeyDown={(e) => {
                               if (assignBusy) return;
@@ -1746,8 +1776,8 @@ export function PuzzlesCrudPage() {
                                 e.preventDefault();
                                 setAssignStudentId(s.id);
                                 setAssignMode(a?.mode ?? "new");
-                                setAssignPracticeLimit(a?.practiceLimit ? String(a.practiceLimit) : "");
-                                setAssignDueInHours(hoursRemainingFromIso(a?.dueAt));
+                                setAssignPracticeLimit(practiceLimitFieldValue(a));
+                                setAssignDueInHours(studyHoursFieldValue(a));
                               }
                             }}
                             aria-disabled={assignBusy ? "true" : "false"}
@@ -1825,8 +1855,10 @@ export function PuzzlesCrudPage() {
                   try {
                     setAssignSuccess(null);
                     setAssignError(null);
+                    // Both values are sent in either mode — the backend applies the one the mode
+                    // needs now and remembers both for the automatic cycle.
                     let practiceLimit: number | undefined;
-                    if (assignMode === "test") {
+                    {
                       const raw = assignPracticeLimit.trim();
                       if (raw.length > 0) {
                         const parsed = Number(raw);
@@ -1838,7 +1870,7 @@ export function PuzzlesCrudPage() {
                       }
                     }
                     let dueInHours: number | undefined;
-                    if (assignMode === "new") {
+                    {
                       const raw = assignDueInHours.trim();
                       if (raw.length > 0) {
                         const parsed = Number(raw);
