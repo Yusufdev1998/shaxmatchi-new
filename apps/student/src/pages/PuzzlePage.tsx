@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Chess, type Square } from "chess.js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BaseChessboard, Button } from "@shaxmatchi/ui";
+import { BaseChessboard, Button, repairInfiniteDuration } from "@shaxmatchi/ui";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useStudentPageHeader } from "../layouts/AppLayout";
 import type { PieceDropHandlerArgs } from "react-chessboard";
@@ -954,6 +954,7 @@ export function PuzzlePage() {
                 controls
                 hidden={isWaitingForAudioDelay}
                 src={`${API_URL}/uploads/audio/${encodeURIComponent(puzzleMoves[moveIdx - 1].audioUrl!)}`}
+                onLoadedMetadata={(e) => repairInfiniteDuration(e.currentTarget)}
                 onPlay={() => setIsStudyAudioPlaying(true)}
                 onPause={() => setIsStudyAudioPlaying(false)}
                 onEnded={() => setIsStudyAudioPlaying(false)}

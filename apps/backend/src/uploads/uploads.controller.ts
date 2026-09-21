@@ -39,6 +39,16 @@ const ALLOWED_MIME = new Set([
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 
+/** Explicit audio types; the extension-based default maps .webm to `video/webm`. */
+const AUDIO_CONTENT_TYPES: Record<string, string> = {
+  ".webm": "audio/webm",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+};
+
 @Controller()
 export class UploadsController {
   @Post("admin/uploads/audio")
@@ -85,6 +95,11 @@ export class UploadsController {
       res.status(404).json({ message: "Audio file not found" });
       return;
     }
+    // Express infers the type from the extension, which maps .webm to `video/webm`.
+    // These are audio recordings, so say so; browsers are lenient about it, but proxies
+    // and download handlers are not.
+    const contentType = AUDIO_CONTENT_TYPES[extname(safe).toLowerCase()];
+    if (contentType) res.type(contentType);
     res.sendFile(filePath);
   }
 }

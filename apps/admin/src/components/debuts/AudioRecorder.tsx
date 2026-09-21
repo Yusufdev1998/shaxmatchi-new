@@ -184,7 +184,11 @@ export function AudioRecorder({ onRecorded, disabled }: AudioRecorderProps) {
         }
       };
 
-      recorder.start(100);
+      // No timeslice: a chunked recording (`start(100)`) muxes a streaming WebM whose
+      // header carries no Duration, so players report `Infinity`, show no total time and
+      // cannot seek — the control looks disabled. Delivering one blob on stop fixes that.
+      // Pause/resume still works, and the encoded size is unchanged.
+      recorder.start();
       setState("recording");
 
       elapsedBeforePauseRef.current = 0;

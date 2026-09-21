@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, TruncatedText } from "@shaxmatchi/ui";
+import { Button, TruncatedText, repairInfiniteDuration } from "@shaxmatchi/ui";
 import { Chess } from "chess.js";
 import { ExplanationQuillEditor } from "../components/debuts/ExplanationQuillEditor";
 import {
@@ -671,9 +671,17 @@ export function PuzzlesCrudPage() {
         );
         setNewMoves(updated);
         if (editingPuzzleId && studentSide) {
-          void updatePuzzleMutation
-            .mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide })
-            .catch(() => {});
+          // Awaited, not fire-and-forget. This write is what actually attaches the file
+          // to the move; dropping it silently left the upload on disk with nothing
+          // pointing at it, so the audio was simply gone the next time the puzzle was
+          // opened. Awaiting also keeps the dialog busy until the save lands, so it
+          // cannot be closed out from under the request.
+          await updatePuzzleMutation.mutateAsync({
+            puzzleId: editingPuzzleId,
+            name: newName.trim(),
+            moves: updated,
+            studentSide,
+          });
         }
       }
       setPendingAudioFile(null);
@@ -681,7 +689,7 @@ export function PuzzlesCrudPage() {
       setAudioError(
         err instanceof Error && err.message
           ? err.message
-          : "Audio yuklashda xatolik yuz berdi. Qaytadan urinib ko'ring.",
+          : "Audio saqlashda xatolik yuz berdi. Qaytadan urinib ko'ring.",
       );
     } finally {
       setAudioUploading(false);
@@ -1212,6 +1220,7 @@ export function PuzzlesCrudPage() {
                     key={newMoveDialogAudio}
                     controls
                     src={`${API_URL}/uploads/audio/${encodeURIComponent(newMoveDialogAudio)}`}
+                    onLoadedMetadata={(e) => repairInfiniteDuration(e.currentTarget)}
                     className="h-8 max-w-[260px] flex-1"
                   />
                   <Button
