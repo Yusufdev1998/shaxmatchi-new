@@ -16,3 +16,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+
+# One-off production data repair (generated locally, not part of the app)
+/clear-dangling-audio.sql
+/clear-dangling-audio.backup.json

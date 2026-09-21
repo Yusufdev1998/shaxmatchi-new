@@ -1239,14 +1239,40 @@ export function PuzzlesCrudPage() {
                       });
                       if (!ok) return;
                       const filename = newMoveDialogAudio;
+                      const previousMoves = newMoves;
                       setNewMoveDialogAudio(undefined);
-                      if (newMoveDialogIdx !== null) {
-                        const updated = newMoves.map((x, i) => i === newMoveDialogIdx ? { ...x, audioUrl: undefined } : x);
-                        setNewMoves(updated);
-                        if (editingPuzzleId && studentSide) {
-                          void updatePuzzleMutation.mutateAsync({ puzzleId: editingPuzzleId, name: newName.trim(), moves: updated, studentSide }).catch(() => {});
+                      const updated =
+                        newMoveDialogIdx !== null
+                          ? newMoves.map((x, i) => (i === newMoveDialogIdx ? { ...x, audioUrl: undefined } : x))
+                          : newMoves;
+                      if (newMoveDialogIdx !== null) setNewMoves(updated);
+                      try {
+                        if (newMoveDialogIdx !== null && editingPuzzleId && studentSide) {
+                          // Drop the reference BEFORE the bytes, and only on a confirmed write.
+                          // Deleting the file first (with the reference removal fired and
+                          // forgotten) left moves pointing at files that no longer existed
+                          // whenever that write failed — which the editor renders as a dead,
+                          // unplayable player.
+                          await updatePuzzleMutation.mutateAsync({
+                            puzzleId: editingPuzzleId,
+                            name: newName.trim(),
+                            moves: updated,
+                            studentSide,
+                          });
                         }
+                      } catch (err) {
+                        // The file is still on the server, so put the reference back.
+                        setNewMoveDialogAudio(filename);
+                        setNewMoves(previousMoves);
+                        setAudioError(
+                          err instanceof Error && err.message
+                            ? err.message
+                            : "Audioni o'chirib bo'lmadi. Qaytadan urinib ko'ring.",
+                        );
+                        return;
                       }
+                      // Reference is gone; removing the file is now safe. A failure here only
+                      // leaves an orphan file, which nothing points at.
                       if (filename) {
                         void adminDebutsApi.deleteAudio(filename).catch(() => {});
                       }
