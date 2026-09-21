@@ -70,6 +70,11 @@ Source-exported (no build step) — dependents compile it directly. Provides But
 
 Backend `.env` (in `apps/backend/`): `DATABASE_URL`, `JWT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `AUDIO_DIR`
 
+Explanation audio storage (in `apps/backend/.env`):
+- `AWS_ENDPOINT_URL`, `AWS_S3_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` — S3-compatible bucket (Railway bucket service). When set, uploads go to the bucket and it is the primary read source.
+- `AUDIO_DIR` — the legacy container volume (default `/mnt/audio`). It remains a **read-through fallback**, so files not yet copied to the bucket still serve. With no bucket configured the app degrades to disk-only, which is what local dev uses.
+- Copy pre-existing files into the bucket with `pnpm audio:migrate` (`--dry-run` via `pnpm audio:migrate:dry`). It must run **where the volume is mounted** (on Railway, not a laptop), is idempotent, and never deletes from the volume. Keep the volume after migrating: it is a second copy.
+
 Web Push (admin "new version" notifications, in `apps/backend/.env`):
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` — generate with `npx web-push generate-vapid-keys` (treat the private key as a secret).
 - `VAPID_SUBJECT` — contact URI, e.g. `mailto:admin@shaxmatchi.uz`.

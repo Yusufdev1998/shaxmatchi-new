@@ -2,7 +2,7 @@ import {
   Controller,
   Delete,
   Get,
-  NotFoundException,
+  Headers,
   Param,
   Post,
   Res,
@@ -11,21 +11,13 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { diskStorage } from "multer";
+import { memoryStorage } from "multer";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, unlinkSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { extname } from "node:path";
 import type { Response } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { TeacherOnlyGuard } from "../auth/teacher-only.guard";
-
-const AUDIO_DIR = process.env.AUDIO_DIR
-  ? resolve(process.env.AUDIO_DIR)
-  : resolve("/mnt", "audio");
-
-try {
-  if (!existsSync(AUDIO_DIR)) mkdirSync(AUDIO_DIR, { recursive: true });
-} catch { /* Railway volume will already exist */ }
+import { AudioStorageService } from "./audio-storage.service";
 
 const ALLOWED_MIME = new Set([
   "audio/mpeg",
@@ -39,29 +31,17 @@ const ALLOWED_MIME = new Set([
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 
-/** Explicit audio types; the extension-based default maps .webm to `video/webm`. */
-const AUDIO_CONTENT_TYPES: Record<string, string> = {
-  ".webm": "audio/webm",
-  ".mp3": "audio/mpeg",
-  ".wav": "audio/wav",
-  ".ogg": "audio/ogg",
-  ".m4a": "audio/mp4",
-  ".aac": "audio/aac",
-};
-
 @Controller()
 export class UploadsController {
+  constructor(private readonly storage: AudioStorageService) {}
+
   @Post("admin/uploads/audio")
   @UseGuards(JwtAuthGuard, TeacherOnlyGuard)
   @UseInterceptors(
     FileInterceptor("file", {
-      storage: diskStorage({
-        destination: AUDIO_DIR,
-        filename: (_req, file, cb) => {
-          const ext = extname(file.originalname).toLowerCase() || ".mp3";
-          cb(null, `${randomUUID()}${ext}`);
-        },
-      }),
+      // Buffered rather than written straight to disk: the file's home is the bucket.
+      // Recordings top out around 4 MB, well under the cap below.
+      storage: memoryStorage(),
       limits: { fileSize: MAX_FILE_SIZE },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_MIME.has(file.mimetype)) {
@@ -72,34 +52,54 @@ export class UploadsController {
       },
     }),
   )
-  uploadAudio(@UploadedFile() file: Express.Multer.File) {
-    return { filename: file.filename };
+  async uploadAudio(@UploadedFile() file: Express.Multer.File) {
+    const ext = extname(file.originalname).toLowerCase() || ".mp3";
+    const filename = `${randomUUID()}${ext}`;
+    // Awaited: the caller only learns the filename once the bytes are safely stored,
+    // so a move can never end up referencing a file that was never written.
+    await this.storage.put(filename, file.buffer);
+    return { filename };
   }
 
   @Delete("admin/uploads/audio/:filename")
   @UseGuards(JwtAuthGuard, TeacherOnlyGuard)
-  deleteAudio(@Param("filename") filename: string) {
+  async deleteAudio(@Param("filename") filename: string) {
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "");
-    const filePath = resolve(AUDIO_DIR, safe);
-    if (existsSync(filePath)) {
-      unlinkSync(filePath);
-    }
+    await this.storage.remove(safe);
     return { ok: true };
   }
 
   @Get("uploads/audio/:filename")
-  serveAudio(@Param("filename") filename: string, @Res() res: Response) {
+  async serveAudio(
+    @Param("filename") filename: string,
+    @Headers("range") range: string | undefined,
+    @Res() res: Response,
+  ) {
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "");
-    const filePath = resolve(AUDIO_DIR, safe);
-    if (!existsSync(filePath)) {
+    let object;
+    try {
+      object = await this.storage.get(safe, range);
+    } catch {
       res.status(404).json({ message: "Audio file not found" });
       return;
     }
-    // Express infers the type from the extension, which maps .webm to `video/webm`.
-    // These are audio recordings, so say so; browsers are lenient about it, but proxies
-    // and download handlers are not.
-    const contentType = AUDIO_CONTENT_TYPES[extname(safe).toLowerCase()];
-    if (contentType) res.type(contentType);
-    res.sendFile(filePath);
+
+    res.setHeader("Content-Type", object.contentType);
+    // Range support is what lets a player scrub a long explanation instead of
+    // downloading it whole before it can seek.
+    res.setHeader("Accept-Ranges", "bytes");
+    if (object.contentLength !== undefined) {
+      res.setHeader("Content-Length", String(object.contentLength));
+    }
+    if (object.contentRange) {
+      res.setHeader("Content-Range", object.contentRange);
+      res.status(206);
+    }
+
+    object.body.on("error", () => {
+      if (!res.headersSent) res.status(404).json({ message: "Audio file not found" });
+      else res.destroy();
+    });
+    object.body.pipe(res);
   }
 }
