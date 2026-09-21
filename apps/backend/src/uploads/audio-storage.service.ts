@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -113,6 +114,32 @@ export class AudioStorageService {
     }
     // No bucket (local dev): keep the original on-disk behaviour.
     await writeFile(resolve(AUDIO_DIR, filename), body);
+  }
+
+  /** Is this key already in the bucket at exactly this size? Used to skip re-copying. */
+  async existsInBucket(filename: string, size: number): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      const head = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: filename }),
+      );
+      return head.ContentLength === size;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Write straight to the bucket, bypassing the disk fallback. For migration only. */
+  async putToBucket(filename: string, body: Buffer): Promise<void> {
+    if (!this.client) throw new Error("Bucket is not configured");
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: filename,
+        Body: body,
+        ContentType: audioContentType(filename),
+      }),
+    );
   }
 
   /**
