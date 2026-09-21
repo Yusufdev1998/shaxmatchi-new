@@ -18,7 +18,17 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
+    // Nest returns `{ message, error, statusCode }` — surface just the message, so the
+    // student sees "Bu urinish allaqachon yakunlangan" rather than a JSON blob.
+    let message = text;
+    try {
+      const body = JSON.parse(text) as { message?: string | string[] };
+      if (Array.isArray(body?.message)) message = body.message.join(", ");
+      else if (typeof body?.message === "string") message = body.message;
+    } catch {
+      /* not JSON — fall back to the raw text */
+    }
+    throw new Error(message || `HTTP ${res.status}`);
   }
   return (await res.json()) as T;
 }
@@ -79,6 +89,12 @@ export const studentExamsApi = {
   get: (examId: string) => api<StudentExamDetail>(`/student/exams/${examId}`),
   startAttempt: (examId: string) =>
     api<StudentExamAttemptStart>(`/student/exams/${examId}/attempts`, { method: "POST" }),
+  /** Re-fetch an in-progress attempt (resume after a reload / PWA update). */
+  getAttempt: (attemptId: string) =>
+    api<StudentExamAttemptStart>(`/student/exams/attempts/${attemptId}`),
+  /** Keep-alive so the server does not sweep a live attempt as abandoned. */
+  heartbeat: (attemptId: string) =>
+    api<{ ok: true }>(`/student/exams/attempts/${attemptId}/heartbeat`, { method: "POST" }),
   finalizeAttempt: (
     attemptId: string,
     result: "passed" | "failed",

@@ -75,6 +75,22 @@ export class StudentExamsController {
     return this.exams.listForStudent(req.user.sub);
   }
 
+  // NOTE: the literal "attempts/..." routes must stay above @Get(":examId") /
+  // @Post(":examId/attempts") — Nest matches in declaration order and ":examId"
+  // would otherwise swallow "attempts".
+
+  /** Resume an in-progress attempt after a reload / PWA update. */
+  @Get("attempts/:attemptId")
+  getAttempt(@Req() req: { user: JwtUserPayload }, @Param("attemptId") attemptId: string) {
+    return this.exams.getAttempt(attemptId, req.user.sub);
+  }
+
+  /** Keep-alive so the abandonment sweeper leaves a live attempt alone. */
+  @Post("attempts/:attemptId/heartbeat")
+  heartbeat(@Req() req: { user: JwtUserPayload }, @Param("attemptId") attemptId: string) {
+    return this.exams.touchAttempt(attemptId, req.user.sub);
+  }
+
   @Get(":examId")
   get(@Req() req: { user: JwtUserPayload }, @Param("examId") examId: string) {
     return this.exams.getForStudent(examId, req.user.sub);

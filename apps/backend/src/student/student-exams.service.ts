@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -18,7 +19,12 @@ import {
 } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
 
-/** Seconds after which an abandoned in_progress attempt is considered failed on next list/start. */
+/**
+ * Seconds of silence (no heartbeat) after which an in_progress attempt is considered
+ * abandoned and failed on the next list/get. Measured from `last_seen_at`, which the
+ * student app bumps every 30s while the exam is open — so this means "the student is
+ * gone", never "the exam is taking a while".
+ */
 const ABANDON_GRACE_SECONDS = 10 * 60;
 
 @Injectable()
@@ -30,7 +36,7 @@ export class StudentExamsService {
     return this.db;
   }
 
-  /** Marks any `in_progress` attempts whose `started_at` is older than the grace window as `failed`. */
+  /** Marks any `in_progress` attempts whose last heartbeat is older than the grace window as `failed`. */
   private async sweepAbandonedAttemptsForStudent(studentId: string) {
     const db = this.getDb();
     const cutoff = new Date(Date.now() - ABANDON_GRACE_SECONDS * 1000);
@@ -45,7 +51,7 @@ export class StudentExamsService {
         and(
           eq(examAssignments.studentId, studentId),
           eq(examAttempts.status, "in_progress"),
-          lt(examAttempts.startedAt, cutoff),
+          lt(examAttempts.lastSeenAt, cutoff),
         ),
       );
     if (abandoned.length === 0) return;
@@ -248,6 +254,87 @@ export class StudentExamsService {
         studentSide: p.studentSide,
       })),
     };
+  }
+
+  /**
+   * Resume an in-progress attempt: returns the same payload as `startAttempt`, rebuilt
+   * from the puzzle ids frozen on the attempt row. Lets the student app survive a reload,
+   * a PWA update or an eviction by the mobile OS without burning the attempt.
+   */
+  async getAttempt(attemptId: string, studentId: string) {
+    const db = this.getDb();
+    const rows = await db
+      .select({
+        id: examAttempts.id,
+        status: examAttempts.status,
+        puzzleIds: examAttempts.puzzleIds,
+        studentId: examAssignments.studentId,
+        attemptsUsed: examAssignments.attemptsUsed,
+        attemptsAllowed: exams.attemptsAllowed,
+        secondsPerMove: exams.secondsPerMove,
+        cooldownSeconds: exams.cooldownSeconds,
+      })
+      .from(examAttempts)
+      .innerJoin(examAssignments, eq(examAssignments.id, examAttempts.assignmentId))
+      .innerJoin(exams, eq(exams.id, examAssignments.examId))
+      .where(eq(examAttempts.id, attemptId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundException("Attempt not found");
+    if (row.studentId !== studentId) throw new ForbiddenException("Not your attempt");
+    if (row.status !== "in_progress") {
+      throw new ConflictException("Bu urinish allaqachon yakunlangan");
+    }
+
+    // Reading the attempt is a sign of life — keep the sweeper off it.
+    await this.touchAttempt(attemptId, studentId);
+
+    const ids = row.puzzleIds;
+    const found = ids.length
+      ? await db.select().from(puzzles).where(inArray(puzzles.id, ids))
+      : [];
+    const byId = new Map(found.map((p) => [p.id, p]));
+    // Preserve the frozen order; silently drop puzzles deleted since the attempt started.
+    const ordered = ids.map((id) => byId.get(id)).filter((p) => p !== undefined);
+    if (ordered.length === 0) {
+      throw new BadRequestException("Imtihonda pazllar yo'q");
+    }
+
+    return {
+      attemptId: row.id,
+      secondsPerMove: row.secondsPerMove,
+      cooldownSeconds: row.cooldownSeconds,
+      attemptsLeft: Math.max(0, row.attemptsAllowed - row.attemptsUsed - 1),
+      puzzles: ordered.map((p) => ({
+        id: p.id,
+        name: p.name,
+        moves: p.moves,
+        studentSide: p.studentSide,
+      })),
+    };
+  }
+
+  /**
+   * Heartbeat: the student app is still on this attempt. A no-op once the attempt is
+   * finalized, so a late beat can never resurrect a finished attempt.
+   */
+  async touchAttempt(attemptId: string, studentId: string) {
+    const db = this.getDb();
+    const rows = await db
+      .select({ studentId: examAssignments.studentId })
+      .from(examAttempts)
+      .innerJoin(examAssignments, eq(examAssignments.id, examAttempts.assignmentId))
+      .where(eq(examAttempts.id, attemptId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundException("Attempt not found");
+    if (row.studentId !== studentId) throw new ForbiddenException("Not your attempt");
+
+    await db
+      .update(examAttempts)
+      .set({ lastSeenAt: new Date() })
+      .where(and(eq(examAttempts.id, attemptId), eq(examAttempts.status, "in_progress")));
+    return { ok: true as const };
   }
 
   /** Finalize the attempt. Increments assignment.attemptsUsed on the first finalize. */

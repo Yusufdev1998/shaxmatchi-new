@@ -90,6 +90,9 @@ export function ExamDetailPage() {
       ? Math.max(0, Math.ceil((lastCompletedAt + cooldownSeconds * 1000 - now) / 1000))
       : 0;
   const coolingDown = cooldownRemaining > 0;
+  // An attempt the student walked away from is still playable until the server sweeps it.
+  // Resuming is not gated by the cooldown — that gate is for *starting* a new attempt.
+  const openAttempt = exam.attempts.find((a) => a.status === "in_progress");
 
   return (
     <div className="space-y-3">
@@ -125,9 +128,25 @@ export function ExamDetailPage() {
           </div>
         ) : null}
 
+        {openAttempt ? (
+          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+            <div className="text-sm font-semibold text-sky-900">Tugallanmagan urinish bor</div>
+            <div className="mt-0.5 text-xs text-sky-700">
+              Uni davom ettiring — yangi urinish boshlasangiz, bu urinish yo'qoladi.
+            </div>
+            <Button asChild size="sm" className="mt-2 w-full sm:w-auto">
+              <Link to={`/exams/${examId}/take/${openAttempt.id}`}>
+                <Play className="mr-1 h-4 w-4" />
+                Davom ettirish
+              </Link>
+            </Button>
+          </div>
+        ) : null}
+
         <div className="mt-4">
           <Button
             className="w-full sm:w-auto"
+            variant={openAttempt ? "secondary" : undefined}
             disabled={exhausted || coolingDown || startMutation.isPending}
             onClick={() => startMutation.mutate()}
           >

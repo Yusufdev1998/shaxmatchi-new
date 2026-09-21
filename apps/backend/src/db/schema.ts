@@ -273,7 +273,7 @@ export const examAttempts = pgTable("exam_attempts", {
     .notNull()
     .references(() => examAssignments.id, { onDelete: "cascade" }),
   /** Frozen puzzle ids (in order) picked at attempt start. */
-  puzzleIds: jsonb("puzzle_ids").notNull(),
+  puzzleIds: jsonb("puzzle_ids").$type<string[]>().notNull(),
   status: examAttemptStatus("status").notNull().default("in_progress"),
   /**
    * First mistake of a failed attempt. Kept for backward compatibility; new attempts also
@@ -283,6 +283,13 @@ export const examAttempts = pgTable("exam_attempts", {
   /** Every mistake made during a failed attempt, in order. Null for abandoned or passed attempts. */
   failDetails: jsonb("fail_details").$type<ExamAttemptFailDetail[]>(),
   startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  /**
+   * Heartbeat from the student app while the attempt is being played. Abandonment is
+   * measured from here, not from `started_at` — a long exam is not an abandoned one.
+   */
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
