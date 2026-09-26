@@ -3,6 +3,8 @@ import {
   Delete,
   Get,
   Headers,
+  Inject,
+  Logger,
   Param,
   Post,
   Res,
@@ -15,6 +17,10 @@ import { memoryStorage } from "multer";
 import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import type { Response } from "express";
+import { sql } from "drizzle-orm";
+import type { DrizzleDb } from "../db";
+import { puzzles } from "../db/schema";
+import { DRIZZLE_DB } from "../db/tokens";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { TeacherOnlyGuard } from "../auth/teacher-only.guard";
 import { AudioStorageService } from "./audio-storage.service";
@@ -33,7 +39,12 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 
 @Controller()
 export class UploadsController {
-  constructor(private readonly storage: AudioStorageService) {}
+  private readonly logger = new Logger(UploadsController.name);
+
+  constructor(
+    private readonly storage: AudioStorageService,
+    @Inject(DRIZZLE_DB) private readonly db: DrizzleDb | null,
+  ) {}
 
   @Post("admin/uploads/audio")
   @UseGuards(JwtAuthGuard, TeacherOnlyGuard)
@@ -65,6 +76,15 @@ export class UploadsController {
   @UseGuards(JwtAuthGuard, TeacherOnlyGuard)
   async deleteAudio(@Param("filename") filename: string) {
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "");
+    // Copying an explanation shares the audio filename rather than duplicating the
+    // file, so one file can back several moves. Deleting it because one move let go
+    // of it silently broke every other move still pointing at it. Only remove bytes
+    // nothing references; when that can't be checked, keep them — an orphan file is
+    // harmless, a missing one is lost audio.
+    if (await this.isAudioReferenced(safe)) {
+      this.logger.log(`Kept ${safe}: still referenced by another move`);
+      return { ok: true, kept: true };
+    }
     await this.storage.remove(safe);
     return { ok: true };
   }
@@ -101,5 +121,16 @@ export class UploadsController {
       else res.destroy();
     });
     object.body.pipe(res);
+  }
+
+  private async isAudioReferenced(filename: string): Promise<boolean> {
+    if (!this.db) return true;
+    const probe = JSON.stringify([{ audioUrl: filename }]);
+    const rows = await this.db
+      .select({ id: puzzles.id })
+      .from(puzzles)
+      .where(sql`${puzzles.moves} @> ${probe}::jsonb`)
+      .limit(1);
+    return rows.length > 0;
   }
 }
