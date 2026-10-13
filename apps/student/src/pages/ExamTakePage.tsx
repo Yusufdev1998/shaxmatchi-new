@@ -14,6 +14,7 @@ import {
 } from "../api/studentExamsApi";
 import { getAuthUser } from "../auth/auth";
 import { isPwaUpdating } from "../pwaUpdate";
+import { examProgressKey, examResultKey } from "../lib/examResultFlusher";
 import {
   playAchievementSound,
   playCountdownBeep,
@@ -57,8 +58,8 @@ type SavedProgress = {
   fails: ExamAttemptFailDetail[];
 };
 
-const progressKey = (attemptId: string) => `examProgress:${attemptId}`;
-const resultKey = (attemptId: string) => `examResult:${attemptId}`;
+const progressKey = examProgressKey;
+const resultKey = examResultKey;
 
 function loadProgress(attemptId: string | undefined): SavedProgress | null {
   if (!attemptId) return null;
@@ -203,6 +204,9 @@ export function ExamTakePage() {
   const hadMistakeRef = React.useRef(savedProgressRef.current?.hadMistake ?? false);
   const failsRef = React.useRef<ExamAttemptFailDetail[]>(savedProgressRef.current?.fails ?? []);
   const restoredRef = React.useRef(false);
+  // Latest progress, reported to the server with every heartbeat. Null until restored, so
+  // a beat can never overwrite the server's copy with the pre-restore start position.
+  const latestProgressRef = React.useRef<SavedProgress | null>(null);
   // Set in the same batch as the restored puzzle/move, so the mirror effect below never
   // writes pre-restore values back over the saved progress.
   const [restored, setRestored] = React.useState(false);
@@ -384,6 +388,25 @@ export function ExamTakePage() {
     if (restoredRef.current) return;
     if (!attempt) return;
     restoredRef.current = true;
+    // The device copy and the server copy can differ (cleared storage, another phone):
+    // resume from whichever got further.
+    const server = attempt.progress;
+    if (
+      server &&
+      (!savedProgressRef.current ||
+        server.puzzleIdx > savedProgressRef.current.puzzleIdx ||
+        (server.puzzleIdx === savedProgressRef.current.puzzleIdx &&
+          server.moveIdx > savedProgressRef.current.moveIdx))
+    ) {
+      savedProgressRef.current = {
+        puzzleIdx: server.puzzleIdx,
+        moveIdx: server.moveIdx,
+        hadMistake: server.hadMistake,
+        fails: server.fails ?? [],
+      };
+      hadMistakeRef.current = server.hadMistake;
+      failsRef.current = server.fails ?? [];
+    }
     const saved = savedProgressRef.current;
     if (!saved) {
       setRestored(true);
@@ -418,32 +441,44 @@ export function ExamTakePage() {
     if (!attempt) return;
     if (!restored) return;
     if (status !== "in_progress") return;
-    writeKey(progressKey(attemptId), {
+    const progress: SavedProgress = {
       puzzleIdx,
       moveIdx,
       hadMistake: hadMistakeRef.current,
       fails: failsRef.current,
-    } satisfies SavedProgress);
+    };
+    writeKey(progressKey(attemptId), progress);
+    latestProgressRef.current = progress;
   }, [attemptId, attempt, restored, status, puzzleIdx, moveIdx, isTransitioning]);
 
-  // Tell the server we are still here, so the abandonment sweeper leaves us alone.
+  // Tell the server we are still here (and how far we got), so the abandonment sweeper
+  // leaves us alone and another device can resume. Also beats when the page is being
+  // hidden or closed — `keepalive` lets that last request outlive the page.
   React.useEffect(() => {
     if (!attemptId) return;
     if (status !== "in_progress") return;
-    const send = () => {
-      void studentExamsApi.heartbeat(attemptId).catch(() => {
-        /* offline is fine — the next beat will do */
-      });
+    const send = (keepalive = false) => {
+      void studentExamsApi
+        .heartbeat(attemptId, {
+          progress: latestProgressRef.current ?? undefined,
+          keepalive,
+        })
+        .catch(() => {
+          /* offline is fine — the next beat will do */
+        });
     };
     send();
     const id = window.setInterval(send, HEARTBEAT_MS);
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") send();
-    };
+    const onVisibilityChange = () => send(document.visibilityState === "hidden");
+    const onPageHide = () => send(true);
     document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("online", onVisibilityChange);
     return () => {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("online", onVisibilityChange);
     };
   }, [attemptId, status]);
 
@@ -664,6 +699,22 @@ export function ExamTakePage() {
     if (!args) return;
     finalizeRef.current.mutate(args);
   }, []);
+
+  // Once the retries have given up, try again by itself as soon as the connection is back
+  // (or the app returns to the foreground) instead of waiting for a button press.
+  const finalizeFailed = finalizeMutation.isError;
+  React.useEffect(() => {
+    if (!finalizeFailed) return;
+    const retry = () => {
+      if (document.visibilityState === "visible" && !finalizeRef.current.isPending) retryFinalize();
+    };
+    window.addEventListener("online", retry);
+    document.addEventListener("visibilitychange", retry);
+    return () => {
+      window.removeEventListener("online", retry);
+      document.removeEventListener("visibilitychange", retry);
+    };
+  }, [finalizeFailed, retryFinalize]);
 
   if (!attemptId || !examId) return null;
 

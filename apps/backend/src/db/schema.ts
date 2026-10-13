@@ -267,6 +267,14 @@ export type ExamAttemptFailDetail = {
   expectedSan: string | null;
 };
 
+/** Where the student got to in an attempt; synced with heartbeats so another device can resume. */
+export type ExamAttemptProgress = {
+  puzzleIdx: number;
+  moveIdx: number;
+  hadMistake: boolean;
+  fails: ExamAttemptFailDetail[];
+};
+
 export const examAttempts = pgTable("exam_attempts", {
   id: uuid("id").defaultRandom().primaryKey(),
   assignmentId: uuid("assignment_id")
@@ -293,6 +301,14 @@ export const examAttempts = pgTable("exam_attempts", {
     .notNull()
     .defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  /**
+   * Set when the server failed this attempt because the student went silent (sweeper or a
+   * superseding start), not because of anything they played. A verdict that the app
+   * delivers late can still overwrite such an attempt for a while.
+   */
+  abandonedAt: timestamp("abandoned_at", { withTimezone: true }),
+  /** Latest progress reported by the student app (null until the first report). */
+  progress: jsonb("progress").$type<ExamAttemptProgress>(),
 });
 
 export type ExamAttempt = typeof examAttempts.$inferSelect;

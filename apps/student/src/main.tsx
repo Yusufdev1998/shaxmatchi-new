@@ -7,6 +7,7 @@ import { App } from "./App";
 import { queryClient } from "./queryClient";
 import { initTelegramMiniApp } from "./auth/telegram";
 import { setPwaUpdateReady } from "./pwaUpdate";
+import { startExamResultFlusher } from "./lib/examResultFlusher";
 import "./index.css";
 
 const updateSW = registerSW({
@@ -21,6 +22,7 @@ const updateSW = registerSW({
   },
 });
 initTelegramMiniApp();
+startExamResultFlusher();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

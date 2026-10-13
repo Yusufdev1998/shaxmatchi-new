@@ -141,6 +141,20 @@
       "when": 1789971206297,
       "tag": "0019_wide_edwin_jarvis",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791871336632,
+      "tag": "0020_shiny_lord_tyger",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791871506292,
+      "tag": "0021_glossy_black_widow",
+      "breakpoints": true
     }
   ]
 }

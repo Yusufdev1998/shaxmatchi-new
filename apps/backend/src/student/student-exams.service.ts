@@ -7,7 +7,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import {
   examAssignments,
@@ -16,6 +16,7 @@ import {
   exams,
   puzzles,
   type ExamAttemptFailDetail,
+  type ExamAttemptProgress,
 } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
 
@@ -26,6 +27,12 @@ import { DRIZZLE_DB } from "../db/tokens";
  * gone", never "the exam is taking a while".
  */
 const ABANDON_GRACE_SECONDS = 10 * 60;
+
+/**
+ * How long after an attempt was failed as abandoned a late verdict from the student app
+ * (finished offline, delivered once back online) may still replace it.
+ */
+const LATE_RESULT_SECONDS = 24 * 60 * 60;
 
 @Injectable()
 export class StudentExamsService {
@@ -55,14 +62,24 @@ export class StudentExamsService {
         ),
       );
     if (abandoned.length === 0) return;
+    // Conditional on still being in_progress, and billing only what this update really
+    // flipped: a verdict that lands between the select and the update must not be
+    // failed (or billed) a second time.
+    const now = new Date();
+    const flipped = await db
+      .update(examAttempts)
+      .set({ status: "failed", completedAt: now, abandonedAt: now })
+      .where(
+        and(
+          inArray(examAttempts.id, abandoned.map((r) => r.id)),
+          eq(examAttempts.status, "in_progress"),
+        ),
+      )
+      .returning({ assignmentId: examAttempts.assignmentId });
     const countsByAssignment = new Map<string, number>();
-    for (const r of abandoned) {
+    for (const r of flipped) {
       countsByAssignment.set(r.assignmentId, (countsByAssignment.get(r.assignmentId) ?? 0) + 1);
     }
-    await db
-      .update(examAttempts)
-      .set({ status: "failed", completedAt: new Date() })
-      .where(inArray(examAttempts.id, abandoned.map((r) => r.id)));
     for (const [assignmentId, delta] of countsByAssignment) {
       await db
         .update(examAssignments)
@@ -150,6 +167,24 @@ export class StudentExamsService {
       .limit(1);
     const assignment = assignRows[0];
     if (!assignment) throw new NotFoundException("Exam not assigned to this student");
+
+    // A live attempt is resumed, never burned: the app may have been killed, reloaded or
+    // lost its connection, and tapping "start" again must not cost the student a try.
+    // Only attempts that have gone silent for the whole grace window are given up on.
+    const openAttempts = await db
+      .select({ id: examAttempts.id, lastSeenAt: examAttempts.lastSeenAt })
+      .from(examAttempts)
+      .where(
+        and(
+          eq(examAttempts.assignmentId, assignment.id),
+          eq(examAttempts.status, "in_progress"),
+        ),
+      )
+      .orderBy(desc(examAttempts.startedAt));
+    const liveCutoff = Date.now() - ABANDON_GRACE_SECONDS * 1000;
+    const live = openAttempts.find((a) => a.lastSeenAt.getTime() >= liveCutoff);
+    if (live) return this.getAttempt(live.id, studentId);
+
     if (assignment.attemptsUsed >= assignment.attemptsAllowed) {
       throw new ForbiddenException("Urinishlar tugagan");
     }
@@ -177,30 +212,26 @@ export class StudentExamsService {
       }
     }
 
-    // Fail any earlier still-open attempts and bill them.
-    const stillOpen = await db
-      .select({ id: examAttempts.id })
-      .from(examAttempts)
-      .where(
-        and(
-          eq(examAttempts.assignmentId, assignment.id),
-          eq(examAttempts.status, "in_progress"),
-        ),
-      );
-    if (stillOpen.length > 0) {
-      await db
+    // Whatever is still open here has been silent past the grace window: fail and bill it.
+    if (openAttempts.length > 0) {
+      const now = new Date();
+      const flipped = await db
         .update(examAttempts)
-        .set({ status: "failed", completedAt: new Date() })
+        .set({ status: "failed", completedAt: now, abandonedAt: now })
         .where(
-          inArray(
-            examAttempts.id,
-            stillOpen.map((r) => r.id),
+          and(
+            inArray(
+              examAttempts.id,
+              openAttempts.map((r) => r.id),
+            ),
+            eq(examAttempts.status, "in_progress"),
           ),
-        );
-      const nextUsed = assignment.attemptsUsed + stillOpen.length;
+        )
+        .returning({ id: examAttempts.id });
+      const nextUsed = assignment.attemptsUsed + flipped.length;
       await db
         .update(examAssignments)
-        .set({ attemptsUsed: nextUsed })
+        .set({ attemptsUsed: sql`${examAssignments.attemptsUsed} + ${flipped.length}` })
         .where(eq(examAssignments.id, assignment.id));
       if (nextUsed >= assignment.attemptsAllowed) {
         throw new ForbiddenException("Urinishlar tugagan");
@@ -247,6 +278,7 @@ export class StudentExamsService {
       secondsPerMove: assignment.secondsPerMove,
       cooldownSeconds: assignment.cooldownSeconds,
       attemptsLeft: assignment.attemptsAllowed - assignment.attemptsUsed - 1,
+      progress: null,
       puzzles: picked.map((p) => ({
         id: p.id,
         name: p.name,
@@ -268,6 +300,7 @@ export class StudentExamsService {
         id: examAttempts.id,
         status: examAttempts.status,
         puzzleIds: examAttempts.puzzleIds,
+        progress: examAttempts.progress,
         studentId: examAssignments.studentId,
         attemptsUsed: examAssignments.attemptsUsed,
         attemptsAllowed: exams.attemptsAllowed,
@@ -305,6 +338,7 @@ export class StudentExamsService {
       secondsPerMove: row.secondsPerMove,
       cooldownSeconds: row.cooldownSeconds,
       attemptsLeft: Math.max(0, row.attemptsAllowed - row.attemptsUsed - 1),
+      progress: row.progress ?? null,
       puzzles: ordered.map((p) => ({
         id: p.id,
         name: p.name,
@@ -318,10 +352,10 @@ export class StudentExamsService {
    * Heartbeat: the student app is still on this attempt. A no-op once the attempt is
    * finalized, so a late beat can never resurrect a finished attempt.
    */
-  async touchAttempt(attemptId: string, studentId: string) {
+  async touchAttempt(attemptId: string, studentId: string, progress?: ExamAttemptProgress) {
     const db = this.getDb();
     const rows = await db
-      .select({ studentId: examAssignments.studentId })
+      .select({ studentId: examAssignments.studentId, saved: examAttempts.progress })
       .from(examAttempts)
       .innerJoin(examAssignments, eq(examAssignments.id, examAttempts.assignmentId))
       .where(eq(examAttempts.id, attemptId))
@@ -330,14 +364,28 @@ export class StudentExamsService {
     if (!row) throw new NotFoundException("Attempt not found");
     if (row.studentId !== studentId) throw new ForbiddenException("Not your attempt");
 
+    // Progress only ever moves forward: a delayed beat from a slow connection must not
+    // overwrite what a newer one already stored.
+    const saved = row.saved;
+    const advances =
+      !!progress &&
+      (!saved ||
+        progress.puzzleIdx > saved.puzzleIdx ||
+        (progress.puzzleIdx === saved.puzzleIdx && progress.moveIdx >= saved.moveIdx));
+
     await db
       .update(examAttempts)
-      .set({ lastSeenAt: new Date() })
+      .set({ lastSeenAt: new Date(), ...(advances ? { progress } : {}) })
       .where(and(eq(examAttempts.id, attemptId), eq(examAttempts.status, "in_progress")));
     return { ok: true as const };
   }
 
-  /** Finalize the attempt. Increments assignment.attemptsUsed on the first finalize. */
+  /**
+   * Finalize the attempt. Safe to call repeatedly and concurrently (the app retries):
+   * exactly one call flips the row and bills the attempt. A verdict arriving for an attempt
+   * the server already gave up on (abandoned) replaces it within `LATE_RESULT_SECONDS` —
+   * the attempt was billed when it was swept, so it is not billed again.
+   */
   async finalizeAttempt(input: {
     attemptId: string;
     studentId: string;
@@ -348,11 +396,10 @@ export class StudentExamsService {
     const db = this.getDb();
     const rows = await db
       .select({
-        attemptId: examAttempts.id,
         status: examAttempts.status,
+        abandonedAt: examAttempts.abandonedAt,
         assignmentId: examAttempts.assignmentId,
         studentId: examAssignments.studentId,
-        attemptsUsed: examAssignments.attemptsUsed,
       })
       .from(examAttempts)
       .innerJoin(examAssignments, eq(examAssignments.id, examAttempts.assignmentId))
@@ -361,27 +408,50 @@ export class StudentExamsService {
     const row = rows[0];
     if (!row) throw new NotFoundException("Attempt not found");
     if (row.studentId !== input.studentId) throw new ForbiddenException("Not your attempt");
-    if (row.status !== "in_progress") {
-      // idempotent: just return current state
-      return { ok: true as const, status: row.status };
-    }
 
     const fails = input.result === "failed" ? (input.failDetails ?? []) : [];
-    await db
-      .update(examAttempts)
-      .set({
-        status: input.result,
-        completedAt: new Date(),
-        // `failDetail` keeps the first mistake for backward compatibility; `failDetails` holds all.
-        failDetail: fails[0] ?? null,
-        failDetails: fails.length > 0 ? fails : null,
-      })
-      .where(eq(examAttempts.id, input.attemptId));
-    await db
-      .update(examAssignments)
-      .set({ attemptsUsed: row.attemptsUsed + 1 })
-      .where(eq(examAssignments.id, row.assignmentId));
+    const verdict = {
+      status: input.result,
+      completedAt: new Date(),
+      // `failDetail` keeps the first mistake for backward compatibility; `failDetails` holds all.
+      failDetail: fails[0] ?? null,
+      failDetails: fails.length > 0 ? fails : null,
+      abandonedAt: null,
+    };
 
-    return { ok: true as const, status: input.result };
+    // Normal path: claim the in-progress row. The status guard makes this atomic, so a
+    // duplicate or racing retry updates nothing and bills nothing.
+    const claimed = await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(examAttempts)
+        .set(verdict)
+        .where(and(eq(examAttempts.id, input.attemptId), eq(examAttempts.status, "in_progress")))
+        .returning({ id: examAttempts.id });
+      if (updated.length === 0) return false;
+      await tx
+        .update(examAssignments)
+        .set({ attemptsUsed: sql`${examAssignments.attemptsUsed} + 1` })
+        .where(eq(examAssignments.id, row.assignmentId));
+      return true;
+    });
+    if (claimed) return { ok: true as const, status: input.result };
+
+    // Late verdict for an attempt the sweeper already failed: let the real result stand.
+    if (row.abandonedAt && Date.now() - row.abandonedAt.getTime() <= LATE_RESULT_SECONDS * 1000) {
+      const replaced = await db
+        .update(examAttempts)
+        .set(verdict)
+        .where(and(eq(examAttempts.id, input.attemptId), isNotNull(examAttempts.abandonedAt)))
+        .returning({ id: examAttempts.id });
+      if (replaced.length > 0) return { ok: true as const, status: input.result };
+    }
+
+    // Already finalized: idempotent, report the current state.
+    const [current] = await db
+      .select({ status: examAttempts.status })
+      .from(examAttempts)
+      .where(eq(examAttempts.id, input.attemptId))
+      .limit(1);
+    return { ok: true as const, status: current?.status ?? row.status };
   }
 }

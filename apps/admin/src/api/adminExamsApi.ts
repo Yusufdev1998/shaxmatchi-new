@@ -43,6 +43,11 @@ export type ExamAttemptRecord = {
   failDetails: ExamAttemptFailDetail[] | null;
   startedAt: string;
   completedAt: string | null;
+  lastSeenAt: string;
+  /** Set when the server failed the attempt because the student went silent (lost connection). */
+  abandonedAt: string | null;
+  progress: { puzzleIdx: number; moveIdx: number } | null;
+  puzzleCount: number;
 };
 
 export type ExamInput = {
@@ -72,6 +77,12 @@ export const adminExamsApi = {
   listAttempts: (examId: string, assignmentId: string) =>
     api<ExamAttemptRecord[]>(
       `/admin/exams/${examId}/assignments/${assignmentId}/attempts`,
+    ),
+  /** Refund and reopen an attempt that was failed only because the student went silent. */
+  reopenAttempt: (examId: string, assignmentId: string, attemptId: string) =>
+    api<{ ok: true }>(
+      `/admin/exams/${examId}/assignments/${assignmentId}/attempts/${attemptId}/reopen`,
+      { method: "POST" },
     ),
   assign: (examId: string, studentIds: string[]) =>
     api<{ created: number; updated: number }>(`/admin/exams/${examId}/assignments`, {

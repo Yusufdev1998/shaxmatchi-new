@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import { examAssignments, examAttempts, examTasks, exams, tasks, users } from "../db/schema";
 import { DRIZZLE_DB } from "../db/tokens";
@@ -156,10 +156,61 @@ export class ExamsService {
         failDetails: examAttempts.failDetails,
         startedAt: examAttempts.startedAt,
         completedAt: examAttempts.completedAt,
+        lastSeenAt: examAttempts.lastSeenAt,
+        abandonedAt: examAttempts.abandonedAt,
+        progress: examAttempts.progress,
+        puzzleCount: sql<number>`jsonb_array_length(${examAttempts.puzzleIds})`,
       })
       .from(examAttempts)
       .where(eq(examAttempts.assignmentId, assignmentId))
       .orderBy(desc(examAttempts.startedAt));
+  }
+
+  /**
+   * Give back an attempt the server failed only because the student went silent (lost
+   * connection, app killed). The attempt is refunded and reopened with the progress it had,
+   * so the student resumes it from the exams list. Attempts failed on merit are untouched.
+   */
+  async reopenAbandonedAttempt(examId: string, assignmentId: string, attemptId: string) {
+    const db = this.getDb();
+    const rows = await db
+      .select({ id: examAssignments.id })
+      .from(examAssignments)
+      .where(and(eq(examAssignments.id, assignmentId), eq(examAssignments.examId, examId)))
+      .limit(1);
+    if (!rows[0]) throw new NotFoundException("Assignment not found");
+
+    const reopened = await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(examAttempts)
+        .set({
+          status: "in_progress",
+          completedAt: null,
+          abandonedAt: null,
+          failDetail: null,
+          failDetails: null,
+          lastSeenAt: new Date(),
+        })
+        .where(
+          and(
+            eq(examAttempts.id, attemptId),
+            eq(examAttempts.assignmentId, assignmentId),
+            eq(examAttempts.status, "failed"),
+            isNotNull(examAttempts.abandonedAt),
+          ),
+        )
+        .returning({ id: examAttempts.id });
+      if (updated.length === 0) return false;
+      await tx
+        .update(examAssignments)
+        .set({ attemptsUsed: sql`GREATEST(${examAssignments.attemptsUsed} - 1, 0)` })
+        .where(eq(examAssignments.id, assignmentId));
+      return true;
+    });
+    if (!reopened) {
+      throw new BadRequestException("Bu urinishni qayta ochib bo'lmaydi");
+    }
+    return { ok: true as const };
   }
 
   async assignExam(input: { examId: string; teacherId: string; studentIds: string[] }) {

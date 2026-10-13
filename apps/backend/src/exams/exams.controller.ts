@@ -63,6 +63,15 @@ export class ExamsController {
     return this.exams.listAssignmentAttempts(examId, assignmentId);
   }
 
+  @Post(":examId/assignments/:assignmentId/attempts/:attemptId/reopen")
+  reopenAttempt(
+    @Param("examId") examId: string,
+    @Param("assignmentId") assignmentId: string,
+    @Param("attemptId") attemptId: string,
+  ) {
+    return this.exams.reopenAbandonedAttempt(examId, assignmentId, attemptId);
+  }
+
   @Post(":examId/assignments")
   assign(
     @Req() req: { user: JwtUserPayload },

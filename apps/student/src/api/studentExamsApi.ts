@@ -70,6 +70,8 @@ export type StudentExamAttemptStart = {
   secondsPerMove: number;
   cooldownSeconds: number;
   attemptsLeft: number;
+  /** Last progress the server has for this attempt (null for a fresh one). */
+  progress: ExamAttemptProgress | null;
   puzzles: StudentExamAttemptPuzzle[];
 };
 
@@ -84,6 +86,13 @@ export type ExamAttemptFailDetail = {
   expectedSan: string | null;
 };
 
+export type ExamAttemptProgress = {
+  puzzleIdx: number;
+  moveIdx: number;
+  hadMistake: boolean;
+  fails: ExamAttemptFailDetail[];
+};
+
 export const studentExamsApi = {
   list: () => api<StudentExamSummary[]>(`/student/exams`),
   get: (examId: string) => api<StudentExamDetail>(`/student/exams/${examId}`),
@@ -93,8 +102,15 @@ export const studentExamsApi = {
   getAttempt: (attemptId: string) =>
     api<StudentExamAttemptStart>(`/student/exams/attempts/${attemptId}`),
   /** Keep-alive so the server does not sweep a live attempt as abandoned. */
-  heartbeat: (attemptId: string) =>
-    api<{ ok: true }>(`/student/exams/attempts/${attemptId}/heartbeat`, { method: "POST" }),
+  heartbeat: (
+    attemptId: string,
+    opts?: { progress?: ExamAttemptProgress; /** survive the page being closed */ keepalive?: boolean },
+  ) =>
+    api<{ ok: true }>(`/student/exams/attempts/${attemptId}/heartbeat`, {
+      method: "POST",
+      body: JSON.stringify({ progress: opts?.progress }),
+      keepalive: opts?.keepalive,
+    }),
   finalizeAttempt: (
     attemptId: string,
     result: "passed" | "failed",

@@ -624,9 +624,16 @@ function formatDateTime(iso: string): string {
 }
 
 function AssignmentAttempts({ examId, assignmentId }: { examId: string; assignmentId: string }) {
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["adminExam", "attempts", assignmentId],
     queryFn: () => adminExamsApi.listAttempts(examId, assignmentId),
+  });
+  const reopen = useMutation({
+    mutationFn: (attemptId: string) => adminExamsApi.reopenAttempt(examId, assignmentId, attemptId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["adminExam"] });
+    },
   });
 
   if (query.isLoading) {
@@ -665,7 +672,29 @@ function AssignmentAttempts({ examId, assignmentId }: { examId: string; assignme
               )}
               <span className="text-slate-400">{formatDateTime(at.startedAt)}</span>
             </div>
-            {at.status === "failed" ? (
+            {at.status === "in_progress" ? (
+              <div className="mt-1 text-slate-500">
+                {at.progress ? `Pazl ${at.progress.puzzleIdx + 1} / ${at.puzzleCount} · ` : ""}
+                oxirgi aloqa: {formatDateTime(at.lastSeenAt)}
+              </div>
+            ) : null}
+            {at.status === "failed" && at.abandonedAt ? (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="text-amber-700">
+                  Aloqa uzilgan (oxirgi aloqa: {formatDateTime(at.lastSeenAt)})
+                  {at.progress ? ` · Pazl ${at.progress.puzzleIdx + 1} / ${at.puzzleCount}` : ""}
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={reopen.isPending}
+                  onClick={() => reopen.mutate(at.id)}
+                >
+                  Urinishni qayta ochish
+                </Button>
+              </div>
+            ) : null}
+            {at.status === "failed" && !at.abandonedAt ? (
               (() => {
                 const fails = at.failDetails ?? (at.failDetail ? [at.failDetail] : []);
                 if (fails.length === 0) {

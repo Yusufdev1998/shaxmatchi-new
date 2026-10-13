@@ -10,7 +10,9 @@ import {
 } from "@nestjs/common";
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -54,6 +56,32 @@ class FailDetailDto {
   expectedSan!: string | null;
 }
 
+class ProgressDto {
+  @IsInt()
+  @Min(0)
+  puzzleIdx!: number;
+
+  @IsInt()
+  @Min(0)
+  moveIdx!: number;
+
+  @IsBoolean()
+  hadMistake!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => FailDetailDto)
+  fails!: FailDetailDto[];
+}
+
+class HeartbeatDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ProgressDto)
+  progress?: ProgressDto;
+}
+
 class FinalizeAttemptDto {
   @IsIn(["passed", "failed"])
   result!: "passed" | "failed";
@@ -87,8 +115,12 @@ export class StudentExamsController {
 
   /** Keep-alive so the abandonment sweeper leaves a live attempt alone. */
   @Post("attempts/:attemptId/heartbeat")
-  heartbeat(@Req() req: { user: JwtUserPayload }, @Param("attemptId") attemptId: string) {
-    return this.exams.touchAttempt(attemptId, req.user.sub);
+  heartbeat(
+    @Req() req: { user: JwtUserPayload },
+    @Param("attemptId") attemptId: string,
+    @Body() dto: HeartbeatDto,
+  ) {
+    return this.exams.touchAttempt(attemptId, req.user.sub, dto?.progress);
   }
 
   @Get(":examId")
