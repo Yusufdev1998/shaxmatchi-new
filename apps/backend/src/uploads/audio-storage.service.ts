@@ -4,6 +4,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -97,6 +98,24 @@ export class AudioStorageService {
 
   get bucketConfigured(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * Can we actually talk to the bucket with the credentials we hold? A one-key listing
+   * rather than a HEAD, because a HEAD error carries no body and so no error code —
+   * and the code (SignatureDoesNotMatch, InvalidAccessKeyId, NoSuchBucket) is what
+   * tells you which fix applies. Returns null when healthy or no bucket is configured.
+   */
+  async probeBucket(): Promise<string | null> {
+    if (!this.client) return null;
+    try {
+      await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 1 }));
+      return null;
+    } catch (err) {
+      const name = (err as { name?: string })?.name ?? "Error";
+      const message = (err as { message?: string })?.message ?? String(err);
+      return `${name}: ${message}`;
+    }
   }
 
   /** Store a freshly uploaded file. Throws if it cannot be persisted anywhere. */
